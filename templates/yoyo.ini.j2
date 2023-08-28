@@ -1,0 +1,5 @@
+[DEFAULT]
+sources = database/migrations
+database = mysql://{{ policyd_yoyo_mysql_user }}:{{ policyd_yoyo_mysql_pass }}@localhost:3306/{{ policyd_mysql_dbname }}
+batch_mode = on
+verbosity = 0

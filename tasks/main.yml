@@ -1,0 +1,116 @@
+---
+# Install PolicydRateGuard
+# https://github.com/onlime/policyd-rate-guard
+- name: Git clone repo
+  ansible.builtin.git:
+    repo: '{{ policyd_repo }}'
+    dest: '{{ policyd_install_path }}'
+    version: '{{ policyd_version }}'
+  notify:
+    - yoyo-apply
+    - policyd-restart
+  tags:
+    - quick-deploy
+
+- name: Deploy config files
+  ansible.builtin.template:
+    src: '{{ item }}.j2'
+    dest: '{{ policyd_install_path }}/{{ item }}'
+    mode: '0644'
+  with_items:
+    - yoyo.ini
+    - .env
+  notify: policyd-restart
+
+# NOTE: setuptools is a requirement for ansible.builtin.pip
+- name: Install Python3 packages for venv
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-pip
+      - python3-setuptools
+
+# $ pip install --upgrade pip
+- name: Upgrade pip in venv
+  ansible.builtin.pip:
+    chdir: '{{ policyd_install_path }}'
+    name: pip
+    state: latest # noqa package-latest
+    virtualenv: venv
+    virtualenv_command: /usr/bin/python3 -m venv
+
+- name: Install Python requirements in venv
+  ansible.builtin.pip:
+    chdir: '{{ policyd_install_path }}'
+    requirements: requirements.txt
+    # state: forcereinstall
+    virtualenv: venv
+    virtualenv_command: /usr/bin/python3 -m venv
+  notify: policyd-restart
+
+- name: Create database
+  community.mysql.mysql_db:
+    name: '{{ policyd_mysql_dbname }}'
+    state: present
+  register: policyd_db
+  notify: yoyo-apply
+
+# We cannot use `ansible.builtin.meta: flush_handlers` here, as there are other handlers
+# triggered from previous tasks, but we only want to run `yoyo-apply` immediately!
+- name: Initial database schema setup with yoyo
+  # noqa: no-changed-when no-handler
+  ansible.builtin.shell: |
+    source venv/bin/activate
+    yoyo apply
+  args:
+    executable: /bin/bash
+    chdir: '{{ policyd_install_path }}'
+  when: policyd_db.changed
+
+- name: Configure MySQL Database User and Grants
+  community.mysql.mysql_user:
+    name: '{{ item.name }}'
+    host: '{{ item.host | default(omit) }}'
+    password: '{{ item.password }}'
+    priv: "{{ item.privs | join('/') }}"
+    # append_privs: true
+    state: present
+  with_items: '{{ policyd_mysql_users }}'
+  no_log: true # prevent logging of passwords
+  tags:
+    - mysql-users
+    - policyd-mysql-users
+
+- name: Create log directory
+  ansible.builtin.file:
+    path: '{{ policyd_log_path }}'
+    state: directory
+    owner: postfix
+    group: postfix
+    mode: '0750'
+
+- name: Install logrotation for {{ policyd_log_file }}
+  ansible.builtin.template:
+    src: logrotate.d/{{ policyd_service_name }}.j2
+    dest: /etc/logrotate.d/{{ policyd_service_name }}
+    mode: '0644'
+  tags: policyd-logrotate
+
+- name: Deploy Systemd unit files
+  ansible.builtin.copy:
+    src: '{{ policyd_install_path }}/deployment/systemd/'
+    dest: /etc/systemd/system/
+    mode: '0644'
+    remote_src: true
+  notify:
+    - systemctl-daemon-reload
+    - policyd-restart
+
+- name: Start and enable service
+  ansible.builtin.service:
+    name: '{{ item }}'
+    state: started
+    enabled: true
+  with_items:
+    - policyd-rate-guard.service
+    - policyd-rate-guard-cleanup.timer

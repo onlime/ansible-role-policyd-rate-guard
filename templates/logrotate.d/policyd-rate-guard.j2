@@ -1,0 +1,14 @@
+{{ policyd_log_file }} {
+	rotate 365
+	daily
+	dateext
+	missingok
+	notifempty
+	compress
+	# delaycompress
+	create 644 postfix postfix
+	sharedscripts
+	postrotate
+		if [ -f /bin/systemctl ] ; then systemctl restart {{ policyd_service_name }}.service ; else service {{ policyd_service_name }} restart >/dev/null 2>&1 ; fi || true
+	endscript
+}

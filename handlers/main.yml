@@ -1,0 +1,19 @@
+---
+# Run mysql migrations with yoyo
+- name: yoyo-apply
+  # noqa: no-changed-when
+  ansible.builtin.shell: |
+    source venv/bin/activate
+    yoyo apply
+  args:
+    executable: /bin/bash
+    chdir: '{{ policyd_install_path }}'
+
+- name: systemctl-daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: policyd-restart
+  ansible.builtin.systemd:
+    name: '{{ policyd_service_name }}'
+    state: restarted

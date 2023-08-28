@@ -1,0 +1,31 @@
+---
+policyd_repo: https://github.com/onlime/policyd-rate-guard.git
+policyd_version: main
+
+policyd_service_name: policyd-rate-guard
+policyd_install_path: '/opt/{{ policyd_service_name }}'
+policyd_log_path: '/var/log/{{ policyd_service_name }}'
+policyd_log_file: '{{ policyd_log_path }}/{{ policyd_service_name }}.log'
+policyd_sentry_dsn: ''
+
+# MySQL user for the application
+policyd_mysql_dbname: '{{ policyd_service_name }}'
+policyd_mysql_user: policyd
+policyd_mysql_pass: '{{ vault_policyd_mysql_pass }}'
+
+# MySQL user for yoyo migrations (defaults to the same as the app user)
+policyd_yoyo_mysql_user: '{{ policyd_mysql_user }}'
+policyd_yoyo_mysql_pass: '{{ policyd_mysql_pass }}'
+
+# mysql> SHOW GRANTS FOR `policyd`@localhost;
+# +-------------------------------------------------------------------------+
+# | Grants for policyd@localhost                                            |
+# +-------------------------------------------------------------------------+
+# | GRANT USAGE ON *.* TO `policyd`@`localhost`                             |
+# | GRANT ALL PRIVILEGES ON `policyd-rate-guard`.* TO `policyd`@`localhost` |
+# +-------------------------------------------------------------------------+
+policyd_mysql_users:
+  - name: '{{ policyd_mysql_user }}'
+    password: '{{ policyd_mysql_pass }}'
+    privs:
+      - '{{ policyd_mysql_dbname }}.*:ALL'
