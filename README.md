@@ -14,7 +14,31 @@ Install and setup [PolicydRateGuard](https://github.com/onlime/policyd-rate-guar
 
 The role uses the following Ansible modules: [apt](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/apt_module.html), [pip](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/pip_module.html), [git](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/git_module.html), [mysql_db](https://docs.ansible.com/ansible/latest/collections/community/mysql/mysql_db_module.html), [mysql_user](https://docs.ansible.com/ansible/latest/collections/community/mysql/mysql_user_module.html) which might have additional dependencies.
 
-It only installs and configures [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard) as a daemon (Systemd service) and will not touch your existing Postfix installation. Please follow the Postfix Configuration instructions in PolicydRateGuard's README.
+It only installs and configures [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard) as a daemon (Systemd service) and will not touch your existing Postfix installation. Please follow the Postfix Configuration instructions in [PolicydRateGuard's README > Production INSTALL](https://github.com/onlime/policyd-rate-guard/blob/main/README.md#configure-postfix).
+
+## Installation
+
+Installation from [Ansible Galaxy `onlime.policyd_rate_guard`](https://galaxy.ansible.com/onlime/policyd_rate_guard):
+
+```bash
+$ ansible-galaxy install onlime.policyd_rate_guard
+```
+
+Or put the following into your Ansible project's `requirements.yml`:
+
+```yaml
+roles:
+  - name: onlime.policyd_rate_guard
+    version: main
+```
+
+... and then run:
+
+```bash
+$ ansible-galaxy install -r requirements.yml
+```
+
+For usage in your own roles, see **Role Usage Examples** below.
 
 ## Role Variables
 
