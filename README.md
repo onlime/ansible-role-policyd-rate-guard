@@ -1,3 +1,6 @@
+![PolicydRateGuard logo](./docs/logo-dark.png#gh-dark-mode-only)
+![PolicydRateGuard logo](./docs/logo-light.png#gh-light-mode-only)
+
 # PolicydRateGuard Role for Ansible
 
 Install and setup [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard) for on a Debian mailserver with Postfix.
