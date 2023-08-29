@@ -3,6 +3,11 @@
 
 # PolicydRateGuard Role for Ansible
 
+[![Ansible Role onlime.policyd_rate_guard](https://img.shields.io/ansible/role/63151)](https://galaxy.ansible.com/onlime/policyd_rate_guard)
+[![Ansible Quality Score](https://img.shields.io/ansible/quality/63151)](https://galaxy.ansible.com/onlime/policyd_rate_guard)
+[![Ansible Role Downloads](https://img.shields.io/ansible/role/d/63151)](https://galaxy.ansible.com/onlime/policyd_rate_guard)
+[![Latest release](https://img.shields.io/github/v/release/onlime/ansible-role-policyd-rate-guard)](https://github.com/onlime/ansible-role-policyd-rate-guard/releases)
+
 Install and setup [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard) for on a Debian mailserver with Postfix.
 
 ## Requirements
