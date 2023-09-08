@@ -7,6 +7,12 @@ policyd_install_path: '/opt/{{ policyd_service_name }}'
 policyd_log_path: '/var/log/{{ policyd_service_name }}'
 policyd_log_file: '{{ policyd_log_path }}/{{ policyd_service_name }}.log'
 policyd_sentry_dsn: ''
+policyd_message_retention: 0
+
+# Webhook
+policyd_webhook_enabled: false
+policyd_webhook_url: ''
+policyd_webhook_secret: '{{ vault_policyd_webhook_secret }}'
 
 # MySQL user for the application
 policyd_mysql_dbname: '{{ policyd_service_name }}'
