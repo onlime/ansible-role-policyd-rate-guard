@@ -71,12 +71,14 @@
   community.mysql.mysql_user:
     name: '{{ item.name }}'
     host: '{{ item.host | default(omit) }}'
-    password: '{{ item.password }}'
+    plugin: caching_sha2_password
+    plugin_auth_string: '{{ item.password }}'
     priv: "{{ item.privs | join('/') }}"
     # append_privs: true
     state: present
   with_items: '{{ policyd_mysql_users }}'
   no_log: true # prevent logging of passwords
+  notify: policyd-restart
   tags:
     - mysql-users
     - policyd-mysql-users
