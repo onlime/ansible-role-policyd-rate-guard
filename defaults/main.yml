@@ -13,6 +13,7 @@ policyd_message_retention: 0
 policyd_webhook_enabled: false
 policyd_webhook_url: ''
 policyd_webhook_secret: '{{ vault_policyd_webhook_secret }}'
+policyd_webhook_use_jwt: false
 
 # MySQL user for the application
 policyd_mysql_dbname: '{{ policyd_service_name }}'
