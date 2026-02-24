@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## [v0.5.2](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v0.5.2) (2026-02-24)
+
+- Fix ownership of install directory to ensure it is owned by the `postfix` user and group, as it's recommended to run the Systemd `policyd-rate-guard.service` as `postfix` user for security reasons.
+
 ## [v0.5.1](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v0.5.1) (2025-02-27)
 
 - Support `policyd_webhook_use_jwt` (bool) variable for enabling JWT authentication for the `WEBHOOK_USE_JWT` env var which was introduced in [onlime/policyd-rate-guard v0.7.2](https://github.com/onlime/policyd-rate-guard/releases/tag/v0.7.2)

@@ -48,6 +48,13 @@
     virtualenv_command: /usr/bin/python3 -m venv
   notify: policyd-restart
 
+- name: Ensure policyd-rate-guard directory ownership
+  ansible.builtin.file:
+    path: '{{ policyd_install_path }}'
+    owner: postfix
+    group: postfix
+    recurse: true
+
 - name: Create database
   community.mysql.mysql_db:
     name: '{{ policyd_mysql_dbname }}'
