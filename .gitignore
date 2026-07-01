@@ -1,0 +1,5 @@
+# ansible-lint / ansible-galaxy cache (incl. self-referential role symlink)
+.ansible/
+
+# Editor settings
+.vscode/

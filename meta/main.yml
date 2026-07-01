@@ -2,11 +2,12 @@
 
 galaxy_info:
   role_name: policyd_rate_guard
+  namespace: onlime
   description: Install PolicydRateGuard on a Postfix mail server
   author: Philip Iezzi
   company: Onlime GmbH
   license: GPLv3
-  min_ansible_version: '2.4'
+  min_ansible_version: '2.15'
   platforms:
     - name: Debian
       versions:

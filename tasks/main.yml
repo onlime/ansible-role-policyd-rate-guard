@@ -7,8 +7,8 @@
     dest: '{{ policyd_install_path }}'
     version: '{{ policyd_version }}'
   notify:
-    - yoyo-apply
-    - policyd-restart
+    - Apply yoyo migrations
+    - Restart policyd service
   tags:
     - quick-deploy
 
@@ -17,10 +17,10 @@
     src: '{{ item }}.j2'
     dest: '{{ policyd_install_path }}/{{ item }}'
     mode: '0644'
-  with_items:
+  loop:
     - yoyo.ini
     - .env
-  notify: policyd-restart
+  notify: Restart policyd service
 
 # NOTE: setuptools is a requirement for ansible.builtin.pip
 - name: Install Python3 packages for venv
@@ -35,7 +35,7 @@
   ansible.builtin.pip:
     chdir: '{{ policyd_install_path }}'
     name: pip
-    state: latest # noqa package-latest
+    state: latest  # noqa package-latest
     virtualenv: venv
     virtualenv_command: /usr/bin/python3 -m venv
 
@@ -46,7 +46,7 @@
     # state: forcereinstall
     virtualenv: venv
     virtualenv_command: /usr/bin/python3 -m venv
-  notify: policyd-restart
+  notify: Restart policyd service
 
 - name: Ensure policyd-rate-guard directory ownership
   ansible.builtin.file:
@@ -56,14 +56,15 @@
     recurse: true
 
 - name: Create database
-  community.mysql.mysql_db:
+  ansible.mysql.mysql_db:
     name: '{{ policyd_mysql_dbname }}'
     state: present
   register: policyd_db
-  notify: yoyo-apply
+  notify: Apply yoyo migrations
 
-# We cannot use `ansible.builtin.meta: flush_handlers` here, as there are other handlers
-# triggered from previous tasks, but we only want to run `yoyo-apply` immediately!
+# We cannot use `ansible.builtin.meta: flush_handlers` here, as there are other
+# handlers triggered from previous tasks, but we only want to run the
+# `Apply yoyo migrations` handler immediately!
 - name: Initial database schema setup with yoyo
   # noqa: no-changed-when no-handler
   ansible.builtin.shell: |
@@ -72,10 +73,10 @@
   args:
     executable: /bin/bash
     chdir: '{{ policyd_install_path }}'
-  when: policyd_db.changed
+  when: policyd_db is changed
 
 - name: Configure MySQL Database User and Grants
-  community.mysql.mysql_user:
+  ansible.mysql.mysql_user:
     name: '{{ item.name }}'
     host: '{{ item.host | default(omit) }}'
     plugin: caching_sha2_password
@@ -83,9 +84,9 @@
     priv: "{{ item.privs | join('/') }}"
     # append_privs: true
     state: present
-  with_items: '{{ policyd_mysql_users }}'
-  no_log: true # prevent logging of passwords
-  notify: policyd-restart
+  loop: '{{ policyd_mysql_users }}'
+  no_log: true  # prevent logging of passwords
+  notify: Restart policyd service
   tags:
     - mysql-users
     - policyd-mysql-users
@@ -112,14 +113,14 @@
     mode: '0644'
     remote_src: true
   notify:
-    - systemctl-daemon-reload
-    - policyd-restart
+    - Reload systemd daemon
+    - Restart policyd service
 
 - name: Start and enable service
   ansible.builtin.service:
     name: '{{ item }}'
     state: started
     enabled: true
-  with_items:
+  loop:
     - policyd-rate-guard.service
     - policyd-rate-guard-cleanup.timer
