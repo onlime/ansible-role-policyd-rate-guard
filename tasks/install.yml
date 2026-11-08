@@ -1,7 +1,28 @@
 ---
+# After the move, the old daemon only runs from memory until its next restart (0.x's logrotate restarts it every
+# night): everything that could fail right after the move is checked before it
 - name: Move a legacy installation aside
   when: policyd_legacy_install | default(false)
   block:
+    # e.g. -t quick-deploy would move 0.x aside without configuring and starting 1.0 (and skip infra's prechecks)
+    - name: Fail unless this is a full run
+      ansible.builtin.assert:
+        that:
+          - ansible_run_tags | list == ['all']
+          - ansible_skip_tags | intersect(['untagged', 'always', 'quick-deploy', 'policyd-config', 'policyd-mysql-users',
+            'mysql-users', 'policyd-logrotate']) | length == 0
+        fail_msg: >-
+          {{ policyd_install_path }} is a 0.x installation: upgrade it with a full run, without --tags or --skip-tags.
+        quiet: true
+
+    # A commit ID can't be checked this way (ls-remote lists refs only)
+    - name: Check that the repository has {{ policyd_version }}
+      ansible.builtin.command:
+        argv: [git, ls-remote, --exit-code, '{{ policyd_repo }}', '{{ policyd_version }}']
+      changed_when: false
+      check_mode: false
+      when: policyd_version is not regex('^[0-9a-f]{7,40}$')
+
     - name: Check for an earlier backup
       ansible.builtin.stat:
         path: '{{ policyd_legacy_backup_path }}'
@@ -92,8 +113,8 @@
     state: absent
   when: policyd_install_needed | bool
 
-# Creates the venv if needed. Dependencies as binary wheels only, so no third-party code is built or run at install
-# time; the app itself is built from the checkout (declarative pyproject.toml). umask: root's may be 077, and the
+# Creates the venv if needed. Dependencies as binary wheels only, so none of their build scripts run at install time;
+# the app itself is built from the checkout by setuptools (a wheel, from its declarative pyproject.toml). umask: root's may be 077, and the
 # service user must be able to read the venv.
 # The module runs its commands in /tmp unless told otherwise, and `python3 -m venv` imports from its working directory
 # first: a venv.py that any local user put into /tmp would run as root. -I keeps the working directory off the import

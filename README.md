@@ -22,7 +22,7 @@ It doesn't touch your Postfix configuration; see [Configure Postfix](https://git
 ## Requirements
 
 - Debian 13 (trixie) or later, with MySQL/Percona Server 8.4+ or MariaDB 12.1+ on the same host (for older MariaDB set `policyd_mysql_plugin: ''`).
-- The collection `ansible.mysql` on the controller; the role installs `python3-pymysql` on the host for it. The `mysql_db`/`mysql_user` tasks log in as configured for root, e.g. in `/root/.my.cnf`, or through `policyd_mysql_login_unix_socket`.
+- Ansible 2.16 or later (ansible-core) and the collection `ansible.mysql` on the controller; the role installs `python3-pymysql` on the host for it. The `mysql_db`/`mysql_user` tasks log in as configured for root, e.g. in `/root/.my.cnf`, or through `policyd_mysql_login_unix_socket`.
 
 ## Installation
 
@@ -73,7 +73,7 @@ To change the database passwords, update them in the vault and run once with `-e
 | `policyd_message_retention` | `365` | Days to keep rows in `messages` (`0`: forever) |
 | `policyd_log_level`, `policyd_log_rotate`, `policyd_syslog` | `INFO`, `365`, `true` | Logging to `/var/log/policyd-rate-guard/policyd-rate-guard.log` (rotated daily) and syslog |
 | `policyd_sentry_dsn`, `policyd_sentry_environment` | , `prod` | Sentry error reporting |
-| `policyd_webhook_enabled`, `policyd_webhook_url`, `policyd_webhook_secret` | `false`, , `vault_policyd_webhook_secret` | Webhook when a sender reaches the quota, authenticated with a JWT (base64 secret) |
+| `policyd_webhook_enabled`, `policyd_webhook_url`, `policyd_webhook_secret` | `false`, , `vault_policyd_webhook_secret` | Webhook when a sender reaches the quota, authenticated with a JWT. The secret is base64 and decodes to at least 32 bytes: `openssl rand -base64 32` |
 | `policyd_extra_env` | `{}` | More environment variables, e.g. `{DB_POOL_MAXCONNECTIONS: 20}` |
 | `policyd_user`, `policyd_install_path`, `policyd_config_path` | `policyd-rate-guard`, `/opt/policyd-rate-guard`, `/etc/policyd-rate-guard` | Paths and user |
 
@@ -86,13 +86,15 @@ You need to:
 - Add `policyd_yoyo_mysql_pass` (the migrations now use their own database user; the daemon's user loses its schema privileges).
 - Pin `policyd_version` to a tag if you set it to a branch.
 - Check `policyd_message_retention` (now 365 days instead of keeping everything).
+- With the webhook enabled: `policyd_webhook_secret` must be base64 and decode to at least 32 bytes (`openssl rand -base64 32`). Remove `policyd_webhook_use_jwt` and a `{token}` in `policyd_webhook_url`: PolicydRateGuard 1.0 always sends a JWT. The role checks both before changing anything.
+- Remove `policyd_log_path`: the log is always in `/var/log/policyd-rate-guard/`, and `policyd_log_file` must stay there (the role checks it).
 - Rotate the database passwords and the webhook secret afterwards: 0.x deployed them in world-readable files.
 
-Run the role in check mode (`--check --diff`) first; on a 0.x host it reports the move and the new installation.
+Run the role in check mode (`--check --diff`) first; on a 0.x host it reports the move and the new installation. Upgrade with a full run, without `--tags` or `--skip-tags`: the role refuses a tag-limited run on a 0.x host, which would move the old installation aside without setting up the new one. If a run fails after the move, run it again once fixed, the same day: the old daemon keeps running from memory only until its next restart (0.x's logrotate restarts it every night).
 
 ## Development
 
-The role is tested in two ways, locally and by [GitHub Actions](https://github.com/onlime/ansible-role-policyd-rate-guard/actions/workflows/ci.yml) on every push and pull request:
+The role is tested in two ways, locally and by [GitHub Actions](https://github.com/onlime/ansible-role-policyd-rate-guard/actions/workflows/ci.yml) on pushes to `main` and `develop` and on pull requests:
 
 - **ansible-lint** checks the code against Ansible's best practices (profile `production`).
 - **Molecule** runs the role in a Docker container with Debian 13, systemd, Postfix and Percona Server 8.4, like a real mail server, and then checks the result. The container is created for the test and removed afterwards; on your machine, only the tools in `.venv` (see below) and the Docker image remain.
@@ -146,24 +148,28 @@ $ molecule test -s upgrade
 
 A scenario passed when the command ends without an error and the `SCENARIO RECAP` at the end shows `failed=0`. By default the scenarios install the PolicydRateGuard release the role is made for (`policyd_version` in `defaults/main.yml`) from GitHub.
 
-To test against a local checkout of PolicydRateGuard instead, e.g. a branch you're working on, clone it next to the role. The path must be absolute, and only committed changes are tested, because the role clones the checkout:
+To test against a local checkout of PolicydRateGuard instead, e.g. a branch you're working on, clone it next to the role:
 
 ```bash
 $ git clone https://github.com/onlime/policyd-rate-guard.git ../policyd-rate-guard
-$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test -s default
+$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=main molecule test -s default
 ```
 
-`POLICYD_VERSION` is a branch, tag or commit of that checkout.
+`POLICYD_REPO_PATH` must be an absolute path. `POLICYD_VERSION` is a local branch (e.g. the one you're working on), a tag or a commit of that checkout. The role clones the checkout, so only committed changes are tested, and a branch that only exists on GitHub must be checked out locally first (`git -C ../policyd-rate-guard switch develop`).
 
 ### When a test fails
 
 `molecule test` removes the container at the end, also after a failure. To look at what happened, run the steps one by one, which keeps the container:
 
 ```bash
-$ molecule converge -s default   # create and prepare the container, run the role
-$ molecule verify -s default     # run the checks again
-$ molecule login -s default      # a shell in the container, e.g. for: systemctl status policyd-rate-guard
-$ molecule destroy -s default    # remove the container when you're done
+# create and prepare the container, run the role:
+$ molecule converge -s default
+# run the checks again:
+$ molecule verify -s default
+# a shell in the container, e.g. for: systemctl status policyd-rate-guard
+$ molecule login -s default
+# remove the container when you're done:
+$ molecule destroy -s default
 ```
 
 After you change the role, `molecule converge` runs it again on the same container. `molecule destroy` also cleans up after an interrupted run (Ctrl-C); `molecule test` starts with a clean container anyway.

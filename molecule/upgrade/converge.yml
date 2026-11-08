@@ -2,5 +2,11 @@
 - name: Converge
   hosts: all
   gather_facts: true
+  pre_tasks:
+    # Without POLICYD_VERSION, the role's default (the release it's made for)
+    - name: PolicydRateGuard version from POLICYD_VERSION
+      ansible.builtin.set_fact:
+        policyd_version: "{{ lookup('env', 'POLICYD_VERSION') }}"
+      when: lookup('env', 'POLICYD_VERSION') | length > 0
   roles:
     - role: onlime.policyd_rate_guard

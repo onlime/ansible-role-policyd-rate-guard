@@ -10,7 +10,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - Since v0.5.2 the code directory, including `.git` and the venv, was owned by `postfix`, and the role ran code from it as root (yoyo migrations, pip, git). Anything running as `postfix`, like Postfix's smtpd, could have planted code there that root would run on the next deployment. The code is now owned by root and never writable by the service; an existing installation not owned by root is moved aside instead of reused.
 - The daemon runs as a dedicated user `policyd-rate-guard` instead of `postfix` (the mail owner), with systemd sandboxing.
 - `policyd_version` defaults to a release tag instead of `main`, so a run no longer deploys whatever is on the default branch.
-- PolicydRateGuard is installed with `pip install --only-binary=:all:` of the checkout: dependencies as binary wheels only, so no third-party code runs at install time, and only when the checked-out commit changes. pip is no longer upgraded to the latest version.
+- PolicydRateGuard is installed with `pip install --only-binary=:all:` of the checkout: dependencies as binary wheels only, so none of their build scripts run at install time (setuptools, itself a wheel, only builds PolicydRateGuard from the checkout), and only when the checked-out commit changes. pip is no longer upgraded to the latest version.
 - The migrations use their own database user; the daemon's user only gets `SELECT, INSERT, UPDATE, DELETE`.
 - 0.x created the venv as root with `python3 -m venv` in the pip module's default working directory `/tmp`, so a `venv.py` that any local user put there ran as root. The venv is now created with `python3 -I` from root's home (`/root/`), and pip keeps no cache there (`--no-cache-dir`).
 
@@ -32,7 +32,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - The venv is recreated when Python's minor version changes (Debian release upgrade).
 - Migrations are only applied when some are pending, so the role reports changes correctly.
 - The daemon is only restarted when code, dependencies, configuration or units change; logrotate no longer restarts it.
-- Works in check mode, including on a 0.x host.
+- Works in check mode, including on a 0.x host. On a 0.x host, the role refuses a tag-limited run (e.g. `-t quick-deploy` would move 0.x aside without setting up 1.0) and checks that `policyd_version` exists before moving anything.
 - The cleanup is retried for up to an hour when resetting the counters fails (e.g. a row locked at midnight); before, senders stayed blocked for the day.
 - A restart that a failed run left out, e.g. after a password rotation, is caught up on the next run: the service is restarted whenever the env file is newer than the running service.
 - Molecule tests (fresh install and upgrade from 0.5.3/0.7.4 on Debian 13 with Percona Server 8.4) and GitHub Actions (ansible-lint, Molecule).

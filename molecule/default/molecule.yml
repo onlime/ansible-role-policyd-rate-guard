@@ -1,7 +1,7 @@
 ---
 # Fresh install on Debian 13 with Percona Server 8.4.
 # The app comes from GitHub (POLICYD_VERSION, default: the role's policyd_version), or from a local checkout:
-#   POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test
+#   POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=main molecule test
 dependency:
   name: galaxy
   options:
@@ -27,7 +27,6 @@ provisioner:
     group_vars:
       all:
         policyd_repo: "{{ lookup('env', 'POLICYD_REPO_PATH') | ternary('/srv/policyd-rate-guard', 'https://github.com/onlime/policyd-rate-guard.git') }}"
-        policyd_version: "{{ lookup('env', 'POLICYD_VERSION') | default('v1.0.0', true) }}"
         # special characters, to test the quoting in the env file and the URL-encoding in yoyo.ini
         policyd_mysql_pass: 'p@ss:w/rd%1"x#y\z'
         policyd_yoyo_mysql_pass: 'yoyo?#&%pass'
