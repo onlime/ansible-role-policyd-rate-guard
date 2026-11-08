@@ -1,5 +1,43 @@
 # CHANGELOG
 
+## [v1.0.0](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v1.0.0) (unreleased)
+
+For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/releases/tag/v1.0.0), Debian 13 only. See "Upgrading from 0.x" in the README.
+
+**Security:**
+
+- The configuration with the database password and the webhook secret was world-readable (`.env` and `yoyo.ini` with mode `0644` in the code directory). It's now in `/etc/policyd-rate-guard/`: the env file `root:policyd-rate-guard 0640`, `yoyo.ini` `root:root 0600`.
+- Since v0.5.2 the code directory, including `.git` and the venv, was owned by `postfix`, and the role ran code from it as root (yoyo migrations, pip, git). Anything running as `postfix`, like Postfix's smtpd, could have planted code there that root would run on the next deployment. The code is now owned by root and never writable by the service; an existing installation not owned by root is moved aside instead of reused.
+- The daemon runs as a dedicated user `policyd-rate-guard` instead of `postfix` (the mail owner), with systemd sandboxing.
+- `policyd_version` defaults to a release tag instead of `main`, so a run no longer deploys whatever is on the default branch.
+- Dependencies are installed hash-pinned and as binary wheels only; pip is no longer upgraded to the latest version.
+- The migrations use their own database user; the daemon's user only gets `SELECT, INSERT, UPDATE, DELETE`.
+
+**Changed (breaking):**
+
+- Debian 13 (trixie) only.
+- New required variable `policyd_yoyo_mysql_pass`.
+- `policyd_message_retention` defaults to `365` (was `0`, keep forever).
+- Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket.
+- Renamed handler and tasks; `quick-deploy` now also covers migrations and units.
+
+**Improved:**
+
+- The database users' passwords are only changed with `policyd_rotate_passwords=true`. Before, the user task reported a change on every run (`caching_sha2_password` hashes can't be compared), reset the passwords and restarted the daemon.
+- The env file is validated with `python -m policyd_rate_guard check` (configuration and database connection) before it replaces the old one.
+- The venv is recreated when Python's minor version changes (Debian release upgrade).
+- Migrations are only applied when some are pending, so the role reports changes correctly.
+- The daemon is only restarted when code, dependencies, configuration or units change; logrotate no longer restarts it.
+- Works in check mode, including on a 0.x host.
+
+**Fixed:**
+
+- Since v0.5.2 every run after the first failed at the git task: git refuses a repository owned by another user (`postfix`) when run as root ("dubious ownership").
+- The first run on a fresh host failed: the first migration ran before the database users were created. The migration user is now created first, the other users and their grants (which may refer to tables) after the migrations.
+- Passwords with special characters broke `yoyo.ini` (`%` and URL-reserved characters weren't escaped); values in the env file are quoted.
+- The service was started before systemd was reloaded, so changed unit files only took effect on the next restart.
+- Molecule tests (fresh install and upgrade from 0.5.3/0.7.4 on Debian 13 with Percona Server 8.4) and GitHub Actions.
+
 ## [v0.5.3](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v0.5.3) (2026-07-01)
 
 - Modernize role to pass `ansible-lint` at the `production` profile
