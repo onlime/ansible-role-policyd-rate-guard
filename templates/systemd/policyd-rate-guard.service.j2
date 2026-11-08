@@ -14,7 +14,6 @@ Environment=POLICYD_ENV_FILE={{ policyd_env_file }}
 ExecStart={{ policyd_venv_path }}/bin/python -m policyd_rate_guard serve --require-socket-activation
 Restart=on-failure
 RestartSec=2s
-WatchdogSec=30s
 TimeoutStopSec=20s
 LimitNOFILE=8192
 LogsDirectory={{ policyd_log_path | regex_replace('^/var/log/', '') }}

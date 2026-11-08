@@ -10,7 +10,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - Since v0.5.2 the code directory, including `.git` and the venv, was owned by `postfix`, and the role ran code from it as root (yoyo migrations, pip, git). Anything running as `postfix`, like Postfix's smtpd, could have planted code there that root would run on the next deployment. The code is now owned by root and never writable by the service; an existing installation not owned by root is moved aside instead of reused.
 - The daemon runs as a dedicated user `policyd-rate-guard` instead of `postfix` (the mail owner), with systemd sandboxing.
 - `policyd_version` defaults to a release tag instead of `main`, so a run no longer deploys whatever is on the default branch.
-- Dependencies are installed hash-pinned and as binary wheels only; pip is no longer upgraded to the latest version.
+- PolicydRateGuard is installed with `pip install --only-binary=:all:` of the checkout: dependencies as binary wheels only, so no third-party code runs at install time, and only when the checked-out commit changes. pip is no longer upgraded to the latest version.
 - The migrations use their own database user; the daemon's user only gets `SELECT, INSERT, UPDATE, DELETE`.
 
 **Changed (breaking):**

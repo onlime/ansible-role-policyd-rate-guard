@@ -12,7 +12,7 @@ Installs [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard), a sen
 What the role sets up:
 
 - A dedicated system user `policyd-rate-guard` that runs the daemon and the daily cleanup job.
-- The code in `/opt/policyd-rate-guard`, checked out at a release tag and **owned by root**, with a venv of hash-pinned binary wheels.
+- The code in `/opt/policyd-rate-guard`, checked out at a release tag and **owned by root**, installed into a venv with `pip install` (dependencies as binary wheels only).
 - The configuration in `/etc/policyd-rate-guard/`: the env file is readable by root and the service user only, `yoyo.ini` (credentials of the migration user) by root only.
 - The database, two database users (the daemon's with data access only, one for the schema migrations) and the migrations.
 - Hardened systemd units: a socket unit (`127.0.0.1:10033` by default), the service with `Type=notify` and sandboxing, and the cleanup service and timer. Log rotation without restarts.

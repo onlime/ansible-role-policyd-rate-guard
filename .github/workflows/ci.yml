@@ -20,11 +20,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          enable-cache: false
+          python-version: '3.13'
+      - run: pip install ansible-core ansible-lint
       - name: ansible-lint
-        run: uvx --with ansible-core ansible-lint --profile production
+        run: ansible-lint --profile production
 
   molecule:
     runs-on: ubuntu-24.04
@@ -51,9 +52,10 @@ jobs:
           path: policyd-rate-guard
           fetch-depth: 0 # the upgrade scenario installs v0.7.4 first
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          enable-cache: false
+          python-version: '3.13'
+      - run: pip install ansible-core molecule 'molecule-plugins[docker]'
       - name: Molecule
         env:
           POLICYD_REPO_PATH: ${{ github.workspace }}/policyd-rate-guard
@@ -61,4 +63,4 @@ jobs:
           SCENARIO: ${{ matrix.scenario }}
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
-        run: uvx --with ansible-core --with 'molecule-plugins[docker]' molecule test -s "$SCENARIO"
+        run: molecule test -s "$SCENARIO"

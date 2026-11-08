@@ -77,48 +77,36 @@
     cmd: /usr/bin/python3 -m venv {{ policyd_venv_path | quote }}
     creates: '{{ policyd_venv_path }}/bin/python'
 
-# Hash-pinned binary wheels only: nothing is built or executed from source distributions as root
-- name: Install the Python dependencies
+- name: Read the commit the venv was installed from
+  ansible.builtin.slurp:
+    src: '{{ policyd_venv_path }}/.installed-commit'
+  register: policyd_installed_commit
+  failed_when: false
+
+# Dependencies as binary wheels only, so no third-party code is built or run at install time; the app itself is
+# built from the checkout (declarative pyproject.toml). pip reinstalls a local project every time, hence only for a
+# new commit (or a new venv).
+- name: Install PolicydRateGuard and its dependencies
   ansible.builtin.command:
     argv:
       - '{{ policyd_venv_path }}/bin/pip'
       - install
       - --disable-pip-version-check
       - --no-input
-      - --require-hashes
       - '--only-binary=:all:'
-      - --no-deps
-      - -r
-      - '{{ policyd_install_path }}/requirements.txt'
-  register: policyd_pip
-  changed_when: "'Successfully installed' in policyd_pip.stdout"
+      - '{{ policyd_install_path }}'
+  when: policyd_git.after is defined and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim)
+  changed_when: true
   notify: Restart policyd service
 
-- name: Find the venv's site-packages
-  ansible.builtin.command:
-    argv: ['{{ policyd_venv_path }}/bin/python', -c, 'import sysconfig; print(sysconfig.get_path("purelib"))']
-  register: policyd_purelib
-  changed_when: false
-  check_mode: false
-  failed_when: policyd_purelib.rc != 0 and not ansible_check_mode
-
-# The app is loaded from the checkout (no build backend needed on the server)
-- name: Add the application to the venv
+- name: Remember the installed commit
   ansible.builtin.copy:
-    content: "{{ policyd_install_path }}/src\n"
-    dest: '{{ policyd_purelib.stdout }}/policyd-rate-guard.pth'
+    content: "{{ policyd_git.after }}\n"
+    dest: '{{ policyd_venv_path }}/.installed-commit'
     owner: root
     group: root
     mode: '0644'
-  when: policyd_purelib.stdout | default('') | length > 0
-  notify: Restart policyd service
-
-# ProtectSystem=strict: the service can't write __pycache__ itself
-- name: Compile the application
-  ansible.builtin.command:
-    argv: ['{{ policyd_venv_path }}/bin/python', -m, compileall, -q, '{{ policyd_install_path }}/src']
-  when: policyd_git is changed or policyd_pip is changed
-  changed_when: true
+  when: policyd_git.after is defined
 
 - name: Remove group/world write permissions and foreign ownership in the install directory
   ansible.builtin.shell:
