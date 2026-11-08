@@ -3,3 +3,6 @@
 
 # Editor settings
 .vscode/
+
+# Python virtualenv for the development tools (see README)
+.venv/

@@ -92,14 +92,81 @@ Run the role in check mode (`--check --diff`) first; on a 0.x host it reports th
 
 ## Development
 
+The role is tested in two ways, locally and by [GitHub Actions](https://github.com/onlime/ansible-role-policyd-rate-guard/actions/workflows/ci.yml) on every push and pull request:
+
+- **ansible-lint** checks the code against Ansible's best practices (profile `production`).
+- **Molecule** runs the role in a Docker container with Debian 13, systemd, Postfix and Percona Server 8.4, like a real mail server, and then checks the result. The container is created for the test and removed afterwards; on your machine, only the tools in `.venv` (see below) and the Docker image remain.
+
+You need no knowledge of Molecule or Docker: the commands below are all there is to it.
+
+### Requirements
+
+- [Docker](https://docs.docker.com/get-started/get-docker/), running: Docker Desktop on macOS and Windows, Docker Engine on Linux. The test container runs systemd, so Molecule starts it with `--privileged`.
+- Python 3.13 or later, and git.
+- Internet access: the container downloads Debian packages, Percona Server, PolicydRateGuard and its dependencies. The Docker image needs about 1.1 GB of disk space.
+
+### Setup (once)
+
+```bash
+$ git clone https://github.com/onlime/ansible-role-policyd-rate-guard.git
+$ cd ansible-role-policyd-rate-guard
+$ python3 -m venv .venv
+$ .venv/bin/pip install ansible-core ansible-lint molecule 'molecule-plugins[docker]'
+```
+
+The tools are installed in `.venv` in the repository (ignored by git). Activate it in every new shell before running the commands below:
+
+```bash
+$ source .venv/bin/activate
+```
+
+### Lint
+
 ```bash
 $ ansible-lint --profile production
-# fresh install and upgrade from 0.5.3/0.7.4, on Debian 13 with Percona Server 8.4 (needs Docker)
+```
+
+The first run installs the collection `ansible.mysql` (from `requirements.yml`). It ends with `Passed: 0 failure(s), 0 warning(s)`.
+
+### Tests
+
+There are two test scenarios. Each takes about three minutes; the first run also downloads the Docker image.
+
+| Scenario | What it tests |
+| --- | --- |
+| `default` | A fresh install: a dry run (`--check`) first, the install, a second run that must change nothing, another dry run, then the checks below. Also: a unix socket for Postfix, the webhook configuration, and a module planted in `/tmp` that root must never import. |
+| `upgrade` | An upgrade: the container is set up as role 0.5.3 left a mail server (PolicydRateGuard 0.7.4, owned by `postfix`), then upgraded to 1.0, run a second time without changes, and checked. Also: the old installation is moved aside and locked down, its data kept. |
+
+The checks after the install include: permissions and ownership of all files, the units (socket, service, cleanup timer), the database migrations and privileges, a real policy request that is answered and counted, the log line format, log rotation, the nightly cleanup and its retry, a restart that keeps the socket open, and the systemd sandbox score.
+
+```bash
 $ molecule test -s default
 $ molecule test -s upgrade
-# against a local checkout of PolicydRateGuard
-$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test -s upgrade
 ```
+
+A scenario passed when the command ends without an error and the `SCENARIO RECAP` at the end shows `failed=0`. By default the scenarios install the PolicydRateGuard release the role is made for (`policyd_version` in `defaults/main.yml`) from GitHub.
+
+To test against a local checkout of PolicydRateGuard instead, e.g. a branch you're working on, clone it next to the role. The path must be absolute, and only committed changes are tested, because the role clones the checkout:
+
+```bash
+$ git clone https://github.com/onlime/policyd-rate-guard.git ../policyd-rate-guard
+$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test -s default
+```
+
+`POLICYD_VERSION` is a branch, tag or commit of that checkout.
+
+### When a test fails
+
+`molecule test` removes the container at the end, also after a failure. To look at what happened, run the steps one by one, which keeps the container:
+
+```bash
+$ molecule converge -s default   # create and prepare the container, run the role
+$ molecule verify -s default     # run the checks again
+$ molecule login -s default      # a shell in the container, e.g. for: systemctl status policyd-rate-guard
+$ molecule destroy -s default    # remove the container when you're done
+```
+
+After you change the role, `molecule converge` runs it again on the same container. `molecule destroy` also cleans up after an interrupted run (Ctrl-C); `molecule test` starts with a clean container anyway.
 
 ## License
 
