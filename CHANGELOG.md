@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [v1.0.0](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v1.0.0) (unreleased)
+## [v1.0.0](https://github.com/onlime/ansible-role-policyd-rate-guard/tree/v1.0.0) (2026-11-08)
 
 For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/releases/tag/v1.0.0), Debian 13 only. See "Upgrading from 0.x" in the README.
 
