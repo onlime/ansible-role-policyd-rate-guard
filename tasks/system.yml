@@ -1,13 +1,15 @@
 ---
-# python3-pymysql: for the ansible.mysql modules on the target
+# python3-pymysql: for the ansible.mysql modules on the target; python3-packaging: for ansible.builtin.pip
 - name: Install packages
   ansible.builtin.apt:
     name:
       - git
       - python3-venv
       - python3-pymysql
+      - python3-packaging
       - logrotate
     state: present
+  register: policyd_packages
 
 - name: Create the system group
   ansible.builtin.group:

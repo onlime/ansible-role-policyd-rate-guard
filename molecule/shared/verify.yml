@@ -171,6 +171,13 @@
         verify_rotated_log.stdout | int != 1 or verify_new_log.stat.pw_name != 'policyd-rate-guard'
         or verify_new_log.stat.gr_name != 'policyd-rate-guard' or verify_new_log.stat.mode != '0640'
 
+    - name: The cleanup job is retried when it fails
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard-cleanup.service
+      register: verify_cleanup_unit
+      failed_when: >-
+        verify_cleanup_unit.status.Restart != 'on-failure' or verify_cleanup_unit.status.StartLimitBurst != '60'
+
     - name: The cleanup job runs
       ansible.builtin.systemd_service:
         name: policyd-rate-guard-cleanup.service

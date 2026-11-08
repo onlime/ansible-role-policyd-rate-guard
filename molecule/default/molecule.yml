@@ -1,11 +1,11 @@
 ---
 # Fresh install on Debian 13 with Percona Server 8.4.
 # The app comes from GitHub (POLICYD_VERSION, default: the role's policyd_version), or from a local checkout:
-#   POLICYD_REPO_PATH=../policyd-rate-guard POLICYD_VERSION=develop molecule test
+#   POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test
 dependency:
   name: galaxy
   options:
-    requirements-file: molecule/requirements.yml
+    requirements-file: requirements.yml
 driver:
   name: docker
 platforms:

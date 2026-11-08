@@ -4,7 +4,7 @@
 # PolicydRateGuard Role for Ansible
 
 [![CI](https://github.com/onlime/ansible-role-policyd-rate-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/onlime/ansible-role-policyd-rate-guard/actions/workflows/ci.yml)
-[![Ansible Role onlime.policyd_rate_guard](https://img.shields.io/ansible/role/63151)](https://galaxy.ansible.com/onlime/policyd_rate_guard)
+[![Ansible Role onlime.policyd_rate_guard](https://img.shields.io/ansible/role/d/onlime/policyd_rate_guard)](https://galaxy.ansible.com/onlime/policyd_rate_guard)
 [![Latest release](https://img.shields.io/github/v/release/onlime/ansible-role-policyd-rate-guard)](https://github.com/onlime/ansible-role-policyd-rate-guard/releases)
 
 Installs [PolicydRateGuard](https://github.com/onlime/policyd-rate-guard), a sender rate limit policy daemon for Postfix, on a Debian 13 mail server.
@@ -98,7 +98,7 @@ $ ansible-lint --profile production
 $ molecule test -s default
 $ molecule test -s upgrade
 # against a local checkout of PolicydRateGuard
-$ POLICYD_REPO_PATH=../policyd-rate-guard POLICYD_VERSION=develop molecule test -s upgrade
+$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=develop molecule test -s upgrade
 ```
 
 ## License

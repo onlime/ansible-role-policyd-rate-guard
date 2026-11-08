@@ -95,14 +95,22 @@
 # Creates the venv if needed. Dependencies as binary wheels only, so no third-party code is built or run at install
 # time; the app itself is built from the checkout (declarative pyproject.toml). umask: root's may be 077, and the
 # service user must be able to read the venv.
+# The module runs its commands in /tmp unless told otherwise, and `python3 -m venv` imports from its working directory
+# first: a venv.py that any local user put into /tmp would run as root. -I keeps the working directory off the import
+# path; chdir is a second guard: root's home, which only root can write to. chdir is only the working directory, the
+# venv goes to `virtualenv`, and nothing is written there (--no-cache-dir: no pip cache in /root/.cache either).
 - name: Install PolicydRateGuard and its dependencies
   ansible.builtin.pip:
     name: '{{ policyd_install_path }}'
     virtualenv: '{{ policyd_venv_path }}'
-    virtualenv_command: /usr/bin/python3 -m venv
-    extra_args: '--only-binary=:all: --disable-pip-version-check --no-input'
+    virtualenv_command: /usr/bin/python3 -I -m venv
+    chdir: /root/
+    extra_args: '--only-binary=:all: --no-cache-dir --disable-pip-version-check --no-input'
     umask: '0022'
-  when: policyd_install_needed | bool
+  when:
+    - policyd_install_needed | bool
+    # in a dry run the packages above aren't installed, and the module can't run without python3-packaging
+    - not (ansible_check_mode and policyd_packages | default({}) is changed)
   changed_when: true  # pip compares `pip freeze`, which doesn't change for a new commit of the same version
   # The commit is only recorded after the restart: if the run fails in between, the next run installs and restarts
   notify: [Restart policyd service, Remember the installed commit]

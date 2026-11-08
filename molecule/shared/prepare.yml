@@ -57,3 +57,22 @@
         cmd: git config --system --add safe.directory /srv/policyd-rate-guard
       changed_when: true
       when: lookup('env', 'POLICYD_REPO_PATH') | length > 0
+
+    # A fresh host as the role must handle it: without the Python libraries the image ships (the pip module needs
+    # python3-packaging, which the role installs), and with a module that a local user planted in /tmp, which root
+    # mustn't import (verify.yml checks the marker)
+    - name: Remove pip, setuptools and packaging from the system Python
+      ansible.builtin.apt:
+        name: [python3-pip, python3-wheel, python3-setuptools, python3-pkg-resources, python3-packaging]
+        state: absent
+        purge: true
+      when: lookup('env', 'MOLECULE_SCENARIO_NAME') == 'default'
+
+    - name: Plant /tmp/venv.py
+      ansible.builtin.copy:
+        dest: /tmp/venv.py
+        content: |
+          open('/tmp/planted-venv-ran', 'w').close()
+        owner: nobody
+        mode: '0644'
+      when: lookup('env', 'MOLECULE_SCENARIO_NAME') == 'default'

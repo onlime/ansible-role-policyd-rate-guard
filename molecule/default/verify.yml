@@ -47,3 +47,9 @@
       register: verify_webhook
       changed_when: false
       failed_when: verify_webhook.stdout | trim != '3'
+
+    - name: Root didn't import the module planted in /tmp
+      ansible.builtin.stat:
+        path: /tmp/planted-venv-ran
+      register: verify_planted
+      failed_when: verify_planted.stat.exists

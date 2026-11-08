@@ -13,6 +13,35 @@
   # also with the database users, so a password rotation by tag reaches the daemon too
   tags: [policyd-config, policyd-mysql-users, mysql-users]
 
+# A run that fails before the handlers loses the restart, and the next run finds the file unchanged: the daemon would
+# keep the old configuration, e.g. a rotated password. Restart whenever the file is newer than the running service.
+- name: Read when the service was started  # noqa: command-instead-of-module (the module has no unix timestamps)
+  ansible.builtin.command:
+    cmd: systemctl show --property=ActiveState,ActiveEnterTimestamp --timestamp=unix {{ policyd_service_name }}.service
+  register: policyd_service_show
+  changed_when: false
+  check_mode: false
+  tags: [policyd-config, policyd-mysql-users, mysql-users]
+
+- name: Read when the configuration was changed
+  ansible.builtin.stat:
+    path: '{{ policyd_env_file }}'
+  register: policyd_env_stat
+  tags: [policyd-config, policyd-mysql-users, mysql-users]
+
+- name: Restart the service for a configuration it hasn't loaded
+  ansible.builtin.debug:
+    msg: The configuration is newer than the running service (a restart lost to an earlier failed run)
+  changed_when: true
+  notify: Restart policyd service
+  when:
+    - "'ActiveState=active' in policyd_service_show.stdout_lines"
+    - policyd_env_stat.stat.exists
+    - >-
+      policyd_env_stat.stat.mtime | int
+      > policyd_service_show.stdout | regex_findall('ActiveEnterTimestamp=@([0-9]+)') | first | default(0) | int
+  tags: [policyd-config, policyd-mysql-users, mysql-users]
+
 # Role 0.x kept them world-readable in the code directory (in a legacy backup they're root-only now)
 - name: Remove configuration files from the code directory
   ansible.builtin.file:

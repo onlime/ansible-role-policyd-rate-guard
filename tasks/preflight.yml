@@ -35,6 +35,16 @@
       1.0: the webhook always sends a JWT in the Authorization header. Switch the receiving side to JWT and remove both.
     quiet: true
 
+# PolicydRateGuard's `check` refuses it too, but only after the new code is installed (and a 0.x one moved aside)
+- name: Assert the webhook secret is base64 of at least 32 bytes (HS256)
+  ansible.builtin.assert:
+    that:
+      - policyd_webhook_secret is regex('^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$')
+      - (policyd_webhook_secret | length) // 4 * 3 - (policyd_webhook_secret | regex_findall('=') | length) >= 32
+    fail_msg: policyd_webhook_secret must be base64 and decode to at least 32 bytes, e.g. openssl rand -base64 32
+    quiet: true
+  when: policyd_webhook_enabled | bool
+
 - name: Check the existing installation
   ansible.builtin.stat:
     path: '{{ policyd_install_path }}'
