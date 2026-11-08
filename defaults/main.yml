@@ -67,7 +67,3 @@ policyd_mysql_users:
 # Passwords of existing users are only changed with -e policyd_rotate_passwords=true (the module can't compare
 # caching_sha2_password hashes, so it would otherwise reset them, and flush the auth cache, on every run)
 policyd_rotate_passwords: false
-
-# Upgrade from role 0.x: an install dir not owned by root (0.5.2+ made it owned by `postfix`) is never reused.
-# It's moved to this path (root, 0700) for inspection, and a fresh clone and venv are created.
-policyd_legacy_backup_path: '{{ policyd_install_path }}.pre-1.0'

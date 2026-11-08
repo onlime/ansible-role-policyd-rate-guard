@@ -7,7 +7,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 **Security:**
 
 - The configuration with the database password and the webhook secret was world-readable (`.env` and `yoyo.ini` with mode `0644` in the code directory). It's now in `/etc/policyd-rate-guard/`: the env file `root:policyd-rate-guard 0640`, `yoyo.ini` `root:root 0600`.
-- Since v0.5.2 the code directory, including `.git` and the venv, was owned by `postfix`, and the role ran code from it as root (yoyo migrations, pip, git). Anything running as `postfix`, like Postfix's smtpd, could have planted code there that root would run on the next deployment. The code is now owned by root and never writable by the service; an existing installation not owned by root is moved aside instead of reused.
+- Since v0.5.2 the code directory, including `.git` and the venv, was owned by `postfix`, and the role ran code from it as root (yoyo migrations, pip, git). Anything running as `postfix`, like Postfix's smtpd, could have planted code there that root would run on the next deployment. The code is now owned by root and never writable by the service. An existing installation not owned by root throughout, or one of 0.x (with its `run.py`), is refused before anything is changed: it has to be moved away first (see "Upgrading from 0.x" in the README).
 - The daemon runs as a dedicated user `policyd-rate-guard` instead of `postfix` (the mail owner), with systemd sandboxing.
 - `policyd_version` defaults to a release tag instead of `main`, so a run no longer deploys whatever is on the default branch.
 - PolicydRateGuard is installed with `pip install --only-binary=:all:` of the checkout: dependencies as binary wheels only, so none of their build scripts run at install time (setuptools, itself a wheel, only builds PolicydRateGuard from the checkout), and only when the checked-out commit changes. pip is no longer upgraded to the latest version.
@@ -16,6 +16,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 
 **Changed (breaking):**
 
+- No in-place upgrade of a 0.x installation: move it away first, then the role installs 1.0 fresh. The README describes the steps, and the way back.
 - Debian 13 (trixie) only, Ansible 2.16+ (`min_ansible_version` was 2.15).
 - New required variable `policyd_yoyo_mysql_pass`.
 - `policyd_message_retention` defaults to `365` (was `0`, keep forever).
@@ -32,15 +33,14 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - The venv is recreated when Python's minor version changes (Debian release upgrade).
 - Migrations are only applied when some are pending, so the role reports changes correctly.
 - The daemon is only restarted when code, dependencies, configuration or units change; logrotate no longer restarts it.
-- Works in check mode, including on a 0.x host. On a 0.x host, the role refuses a tag-limited run (e.g. `-t quick-deploy` would move 0.x aside without setting up 1.0) and checks that `policyd_version` exists before moving anything.
+- Works in check mode.
 - The cleanup is retried for up to an hour when resetting the counters fails (e.g. a row locked at midnight); before, senders stayed blocked for the day.
 - A restart that a failed run left out, e.g. after a password rotation, is caught up on the next run: the service is restarted whenever the env file is newer than the running service.
-- Molecule tests (fresh install and upgrade from 0.5.3/0.7.4 on Debian 13 with Percona Server 8.4) and GitHub Actions (ansible-lint, Molecule).
+- Molecule tests (a fresh install on Debian 13 with Percona Server 8.4, and the refusal of a 0.x installation) and GitHub Actions (ansible-lint, Molecule).
 
 **Fixed:**
 
-- 0.x copied the units as a directory with mode `0644`, which also set `/etc/systemd/system` itself to `0644` (not traversable for other users); 1.0 restores `0755`.
-- Since v0.5.2 every run after the first failed at the git task: git refuses a repository owned by another user (`postfix`) when run as root ("dubious ownership").
+- Since v0.5.2 every run after the first failed at the git task: git refuses a repository owned by another user (`postfix`) when run as root ("dubious ownership"). 1.0 installs fresh into a root-owned directory.
 - The first run on a fresh host failed: the first migration ran before the database users were created. The migration user is now created first, the other users and their grants (which may refer to tables) after the migrations.
 - Passwords with special characters broke `yoyo.ini` (`%` and URL-reserved characters weren't escaped); values in the env file are quoted.
 - The service was started before systemd was reloaded, so changed unit files only took effect on the next restart.

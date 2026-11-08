@@ -4,7 +4,7 @@
   hosts: all
   gather_facts: true
   tasks:
-    - name: A Python wrapper with umask 077 for the default scenario's converge
+    - name: A Python wrapper with umask 077 for converge
       ansible.builtin.copy:
         dest: /usr/local/bin/python3-umask077
         content: |
@@ -66,7 +66,6 @@
         name: [python3-pip, python3-wheel, python3-setuptools, python3-pkg-resources, python3-packaging]
         state: absent
         purge: true
-      when: lookup('env', 'MOLECULE_SCENARIO_NAME') == 'default'
 
     - name: Plant /tmp/venv.py
       ansible.builtin.copy:
@@ -75,4 +74,3 @@
           open('/tmp/planted-venv-ran', 'w').close()
         owner: nobody
         mode: '0644'
-      when: lookup('env', 'MOLECULE_SCENARIO_NAME') == 'default'

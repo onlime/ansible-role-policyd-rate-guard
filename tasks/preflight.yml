@@ -35,7 +35,7 @@
       1.0: the webhook always sends a JWT in the Authorization header. Switch the receiving side to JWT and remove both.
     quiet: true
 
-# PolicydRateGuard's `check` refuses it too, but only after the new code is installed (and a 0.x one moved aside)
+# PolicydRateGuard's `check` refuses it too, but only after the new code is installed
 - name: Assert the webhook secret is base64 of at least 32 bytes (HS256)
   ansible.builtin.assert:
     that:
@@ -50,10 +50,22 @@
     path: '{{ policyd_install_path }}'
   register: policyd_install_stat
 
-# Role 0.5.2+ chowned the checkout including .git and the venv to `postfix`, and ran code from it as root
-# (yoyo, pip, git hooks). Anything running as postfix could have planted code there, so it's never reused.
-- name: Detect a legacy (0.x) installation
-  ansible.builtin.set_fact:
-    policyd_legacy_install: >-
-      {{ policyd_install_stat.stat.exists and (policyd_install_stat.stat.pw_name != 'root'
-         or policyd_install_stat.stat.gr_name != 'root' or policyd_install_stat.stat.mode != '0755') }}
+# Root runs git, pip and yoyo in the install directory: never in one that anybody else could have changed. Role
+# 0.5.2+ made it owned by `postfix`; such an installation (or any 0.x one, with its run.py) has to be moved away first.
+- name: Look for files not owned by root, writable by others, or of 0.x
+  ansible.builtin.command:
+    argv: [find, '{{ policyd_install_path }}', '(', '!', -user, root, -o, '!', -group, root, -o, '(', -perm, /022,
+           '!', -type, l, ')', -o, -path, '{{ policyd_install_path }}/run.py', ')', -print, -quit]
+  register: policyd_install_foreign
+  changed_when: false
+  check_mode: false
+  when: policyd_install_stat.stat.exists
+
+- name: Refuse an installation this role didn't make (e.g. PolicydRateGuard 0.x)
+  ansible.builtin.assert:
+    that: policyd_install_foreign.stdout | default('') | length == 0
+    fail_msg: >-
+      {{ policyd_install_path }} isn't an installation of this role ({{ policyd_install_foreign.stdout | default('') }}
+      isn't owned by root, is writable by others, or is 0.x's run.py). Move it away first, see "Upgrading from 0.x"
+      in the README. Nothing was changed.
+    quiet: true

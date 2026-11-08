@@ -79,18 +79,40 @@ To change the database passwords, update them in the vault and run once with `-e
 
 ## Upgrading from 0.x
 
-Role 1.0 installs PolicydRateGuard 1.x; upgrade both together. Role 0.5.2 and later made the installation directory owned by `postfix` and ran code from it as root, so the role doesn't reuse it: an installation directory not owned by root is moved to `/opt/policyd-rate-guard.pre-1.0` (root only, for inspection; delete it afterwards), then a fresh clone and venv are created. The old service keeps running until the new socket unit takes over port 10033, near the end of the run.
+Role 1.0 installs PolicydRateGuard 1.x; upgrade both together. It doesn't upgrade a 0.x installation in place: role 0.5.2 and later made the installation directory owned by `postfix` and ran code from it as root, so nothing in it can be trusted. Role 1.0 refuses an installation directory that isn't owned by root throughout, or that still has 0.x's `run.py`, and changes nothing. Move the old installation away, then the role installs 1.0 fresh. The database schema is unchanged, so the data stays as it is.
 
-You need to:
+1. **Update your variables:**
+   - Add `policyd_yoyo_mysql_pass`: the migrations use their own database user now, and the daemon's user loses its schema privileges.
+   - Pin `policyd_version` to a tag if you set it to a branch.
+   - Check `policyd_message_retention`: it's 365 days now, 0.x kept everything.
+   - With the webhook enabled: `policyd_webhook_secret` must be base64 and decode to at least 32 bytes (`openssl rand -base64 32`). Remove `policyd_webhook_use_jwt` and a `{token}` in `policyd_webhook_url`: PolicydRateGuard 1.0 always sends a JWT.
+   - Remove `policyd_log_path`: the log is always in `/var/log/policyd-rate-guard/`, and `policyd_log_file` must stay there.
 
-- Add `policyd_yoyo_mysql_pass` (the migrations now use their own database user; the daemon's user loses its schema privileges).
-- Pin `policyd_version` to a tag if you set it to a branch.
-- Check `policyd_message_retention` (now 365 days instead of keeping everything).
-- With the webhook enabled: `policyd_webhook_secret` must be base64 and decode to at least 32 bytes (`openssl rand -base64 32`). Remove `policyd_webhook_use_jwt` and a `{token}` in `policyd_webhook_url`: PolicydRateGuard 1.0 always sends a JWT. The role checks both before changing anything.
-- Remove `policyd_log_path`: the log is always in `/var/log/policyd-rate-guard/`, and `policyd_log_file` must stay there (the role checks it).
-- Rotate the database passwords and the webhook secret afterwards: 0.x deployed them in world-readable files.
+   The role checks these before changing anything.
+2. **Move the 0.x installation away**, root only, and restore the mode of `/etc/systemd/system` (role 0.x set it to `0644`):
+   ```bash
+   $ mv /opt/policyd-rate-guard /opt/policyd-rate-guard.pre-1.0
+   $ chown root:root /opt/policyd-rate-guard.pre-1.0
+   $ chmod 0700 /opt/policyd-rate-guard.pre-1.0
+   $ chmod 0755 /etc/systemd/system
+   ```
+   The 0.x daemon keeps serving from memory until the role replaces its unit at the end of its run. Run the role right away: 0.x's logrotate restarts the daemon every night, and then it no longer starts.
+3. **Run the role:** with `--check --diff` first (it shows a fresh installation), then for real, then once more, which must report no changes.
+4. **Check the result:**
+   ```bash
+   $ systemctl status policyd-rate-guard.socket policyd-rate-guard.service policyd-rate-guard-cleanup.timer
+   $ journalctl -u policyd-rate-guard
+   ```
+   Then send a mail through Postfix with an authenticated account, and look for its line in `/var/log/policyd-rate-guard/policyd-rate-guard.log`.
+5. **Rotate the database passwords and the webhook secret:** 0.x deployed them in world-readable files. Set new values and run the role with `-e policyd_rotate_passwords=true`. Change the webhook secret on the receiving side at the same time.
+6. **Once 1.0 runs fine,** delete `/opt/policyd-rate-guard.pre-1.0`.
 
-Run the role in check mode (`--check --diff`) first; on a 0.x host it reports the move and the new installation. Upgrade with a full run, without `--tags` or `--skip-tags`: the role refuses a tag-limited run on a 0.x host, which would move the old installation aside without setting up the new one. If a run fails after the move, run it again once fixed, the same day: the old daemon keeps running from memory only until its next restart (0.x's logrotate restarts it every night).
+**Back to 0.x**, as long as the backup exists:
+1. Stop and disable the 1.0 units, and remove them: `policyd-rate-guard.socket`, `policyd-rate-guard.service`, `policyd-rate-guard-cleanup.service` and `policyd-rate-guard-cleanup.timer` in `/etc/systemd/system`.
+2. Move `/opt/policyd-rate-guard` away and the backup back, and give it back to `postfix`.
+3. Install 0.x's units and logrotate file from its `deployment/` directory, and start its service and timer.
+
+After a password rotation, put the current database password into the restored `.env` first.
 
 ## Development
 
@@ -132,27 +154,19 @@ The first run installs the collection `ansible.mysql` (from `requirements.yml`).
 
 ### Tests
 
-There are two test scenarios. Each takes about three minutes; the first run also downloads the Docker image.
-
-| Scenario | What it tests |
-| --- | --- |
-| `default` | A fresh install: a dry run (`--check`) first, the install, a second run that must change nothing, another dry run, then the checks below. Also: a unix socket for Postfix, the webhook configuration, and a module planted in `/tmp` that root must never import. |
-| `upgrade` | An upgrade: the container is set up as role 0.5.3 left a mail server (PolicydRateGuard 0.7.4, owned by `postfix`), then upgraded to 1.0, run a second time without changes, and checked. Also: the old installation is moved aside and locked down, its data kept. |
-
-The checks after the install include: permissions and ownership of all files, the units (socket, service, cleanup timer), the database migrations and privileges, a real policy request that is answered and counted, the log line format, log rotation, the nightly cleanup and its retry, a restart that keeps the socket open, and the systemd sandbox score.
+The test takes about three minutes; the first run also downloads the Docker image. It's a fresh install: a dry run (`--check`) first, the install, a second run that must change nothing, another dry run, then the checks. They include: permissions and ownership of all files, the units (socket, service, cleanup timer), the database migrations and privileges, a real policy request that is answered and counted, the log line format, log rotation, the nightly cleanup and its retry, a restart that keeps the socket open, and the systemd sandbox score. Also tested: a unix socket for Postfix, the webhook configuration, a module planted in `/tmp` that root must never import, and that the role refuses an installation owned by `postfix` (as 0.x left it).
 
 ```bash
-$ molecule test -s default
-$ molecule test -s upgrade
+$ molecule test
 ```
 
-A scenario passed when the command ends without an error and the `SCENARIO RECAP` at the end shows `failed=0`. By default the scenarios install the PolicydRateGuard release the role is made for (`policyd_version` in `defaults/main.yml`) from GitHub.
+The test passed when the command ends without an error and the `SCENARIO RECAP` at the end shows `failed=0`. By default it installs the PolicydRateGuard release the role is made for (`policyd_version` in `defaults/main.yml`) from GitHub.
 
 To test against a local checkout of PolicydRateGuard instead, e.g. a branch you're working on, clone it next to the role:
 
 ```bash
 $ git clone https://github.com/onlime/policyd-rate-guard.git ../policyd-rate-guard
-$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=main molecule test -s default
+$ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=main molecule test
 ```
 
 `POLICYD_REPO_PATH` must be an absolute path. `POLICYD_VERSION` is a local branch (e.g. the one you're working on), a tag or a commit of that checkout. The role clones the checkout, so only committed changes are tested, and a branch that only exists on GitHub must be checked out locally first (`git -C ../policyd-rate-guard switch develop`).
@@ -163,13 +177,13 @@ $ POLICYD_REPO_PATH=$PWD/../policyd-rate-guard POLICYD_VERSION=main molecule tes
 
 ```bash
 # create and prepare the container, run the role:
-$ molecule converge -s default
+$ molecule converge
 # run the checks again:
-$ molecule verify -s default
+$ molecule verify
 # a shell in the container, e.g. for: systemctl status policyd-rate-guard
-$ molecule login -s default
+$ molecule login
 # remove the container when you're done:
-$ molecule destroy -s default
+$ molecule destroy
 ```
 
 After you change the role, `molecule converge` runs it again on the same container. `molecule destroy` also cleans up after an interrupted run (Ctrl-C); `molecule test` starts with a clean container anyway.

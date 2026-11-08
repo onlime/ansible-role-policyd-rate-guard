@@ -1,13 +1,4 @@
 ---
-# Role 0.x copied its units as a directory with mode 0644, which also set /etc/systemd/system itself to 0644
-- name: Restore the mode of /etc/systemd/system
-  ansible.builtin.file:
-    path: /etc/systemd/system
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
-
 - name: Install the systemd units
   ansible.builtin.template:
     src: systemd/{{ item.src }}.j2
@@ -51,7 +42,7 @@
       and restart the service.
   when: policyd_units_pending | bool
 
-# A service that isn't socket-activated (0.x) or a changed socket: the service must release the address first
+# A service that isn't socket-activated (e.g. 0.x's unit) or a changed socket: the service must release the address first
 - name: Stop the service to (re)bind the socket
   ansible.builtin.systemd_service:
     name: '{{ policyd_service_name }}.service'

@@ -21,7 +21,7 @@ platforms:
 provisioner:
   name: ansible
   playbooks:
-    prepare: ../shared/prepare.yml
+    prepare: prepare.yml
     verify: verify.yml
   inventory:
     group_vars:

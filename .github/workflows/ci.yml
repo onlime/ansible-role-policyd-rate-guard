@@ -29,15 +29,10 @@ jobs:
 
   molecule:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario: [default, upgrade]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # the upgrade scenario extracts role v0.5.3 from the history
       - name: PolicydRateGuard version
         id: app
         env:
@@ -50,7 +45,7 @@ jobs:
           repository: onlime/policyd-rate-guard
           ref: ${{ steps.app.outputs.ref }}
           path: policyd-rate-guard
-          fetch-depth: 0 # the upgrade scenario installs v0.7.4 first
+          fetch-depth: 0 # a full clone, which the role clones from
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -60,7 +55,6 @@ jobs:
         env:
           POLICYD_REPO_PATH: ${{ github.workspace }}/policyd-rate-guard
           POLICYD_VERSION: ${{ steps.app.outputs.ref }}
-          SCENARIO: ${{ matrix.scenario }}
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
-        run: molecule test -s "$SCENARIO"
+        run: molecule test

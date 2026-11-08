@@ -42,13 +42,6 @@
       > policyd_service_show.stdout | regex_findall('ActiveEnterTimestamp=@([0-9]+)') | first | default(0) | int
   tags: [policyd-config, policyd-mysql-users, mysql-users]
 
-# Role 0.x kept them world-readable in the code directory (in a legacy backup they're root-only now)
-- name: Remove configuration files from the code directory
-  ansible.builtin.file:
-    path: '{{ policyd_install_path }}/{{ item }}'
-    state: absent
-  loop: [.env, yoyo.ini]
-
 - name: Install the log rotation
   ansible.builtin.template:
     src: logrotate.d/policyd-rate-guard.j2

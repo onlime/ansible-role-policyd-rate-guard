@@ -1,6 +1,211 @@
 ---
-- name: Common checks
-  ansible.builtin.import_playbook: ../shared/verify.yml
+- name: Verify
+  hosts: all
+  gather_facts: false
+  vars:
+    install_path: /opt/policyd-rate-guard
+    sender: molecule-verify@example.com
+  tasks:
+    - name: Read the unit states
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+      loop: [policyd-rate-guard.socket, policyd-rate-guard.service, policyd-rate-guard-cleanup.timer]
+      register: verify_units
+
+    - name: Socket, service and cleanup timer are active and enabled
+      ansible.builtin.assert:
+        that:
+          - item.status.ActiveState == 'active'
+          - item.status.UnitFileState == 'enabled'
+        quiet: true
+      loop: '{{ verify_units.results }}'
+      loop_control:
+        label: '{{ item.item }}'
+
+    - name: The daemon runs as policyd-rate-guard
+      ansible.builtin.shell:
+        cmd: ps -o user= -p "$(systemctl show -p MainPID --value policyd-rate-guard.service)"
+      register: verify_user
+      changed_when: false
+      failed_when: verify_user.stdout | trim != 'policyd-rate-guard'
+
+    - name: Nothing in the install directory is writable by others or not owned by root
+      ansible.builtin.command:
+        cmd: find {{ install_path }} ( -perm /022 -not -type l ) -o -not -user root -o -not -group root
+      register: verify_perms
+      changed_when: false
+      failed_when: verify_perms.stdout | length > 0
+
+    - name: No configuration in the install directory
+      ansible.builtin.stat:
+        path: '{{ install_path }}/{{ item }}'
+      loop: [.env, yoyo.ini]
+      register: verify_old_config
+      failed_when: verify_old_config.stat.exists
+
+    - name: Stat the configuration files
+      ansible.builtin.stat:
+        path: '{{ item }}'
+      loop:
+        - /etc/policyd-rate-guard
+        - /etc/policyd-rate-guard/policyd-rate-guard.env
+        - /etc/policyd-rate-guard/yoyo.ini
+      register: verify_config
+
+    - name: Configuration files are readable by root (and the service) only
+      ansible.builtin.assert:
+        that:
+          - verify_config.results[0].stat.mode == '0750'
+          - verify_config.results[0].stat.gr_name == 'policyd-rate-guard'
+          - verify_config.results[1].stat.mode == '0640'
+          - verify_config.results[1].stat.pw_name == 'root'
+          - verify_config.results[1].stat.gr_name == 'policyd-rate-guard'
+          - verify_config.results[2].stat.mode == '0600'
+          - verify_config.results[2].stat.gr_name == 'root'
+        quiet: true
+
+    - name: All migrations are applied
+      ansible.builtin.command:
+        cmd: '{{ install_path }}/venv/bin/yoyo list --config /etc/policyd-rate-guard/yoyo.ini'
+      register: verify_migrations
+      changed_when: false
+      failed_when: verify_migrations.stdout is regex('(?m)^U\s') or verify_migrations.rc != 0
+
+    - name: Read when the socket was started
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.socket
+      register: verify_socket_before
+
+    - name: Restart the service, as a deploy does
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.service
+        state: restarted
+
+    - name: Read when the socket was started, after the restart
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.socket
+      register: verify_socket_after
+
+    # Otherwise Postfix gets refused connections during each restart and falls back to its default_action (DUNNO)
+    - name: The socket stayed open across the restart
+      ansible.builtin.assert:
+        that: verify_socket_after.status.ActiveEnterTimestampMonotonic == verify_socket_before.status.ActiveEnterTimestampMonotonic
+        quiet: true
+
+    - name: Read the installed commit and the checkout's commit
+      ansible.builtin.command:
+        cmd: '{{ item }}'
+      loop:
+        - cat {{ install_path }}/venv/.installed-commit
+        - git -C {{ install_path }} rev-parse HEAD
+      register: verify_commits
+      changed_when: false
+
+    - name: The venv has the checked-out commit installed
+      ansible.builtin.assert:
+        that: verify_commits.results[0].stdout == verify_commits.results[1].stdout
+        quiet: true
+
+    - name: Answer a policy request (DATA stage, Postfix attribute order)
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          exec 3<>/dev/tcp/127.0.0.1/10033
+          printf '%s\n' request=smtpd_access_policy protocol_state=DATA protocol_name=ESMTP \
+            helo_name=client.example.net queue_id=MOLECULE1 sender=from@example.com recipient=to@example.org \
+            recipient_count=2 client_address=192.0.2.10 client_name=client.example.net sasl_method=PLAIN \
+            sasl_username={{ sender }} '' >&3
+          timeout 10 head -n 1 <&3
+      register: verify_policy
+      changed_when: false
+      failed_when: verify_policy.stdout != 'action=OK'
+
+    - name: The request was counted
+      ansible.builtin.command:
+        cmd: >-
+          mysql -N -D policyd-rate-guard -e "SELECT rcpt_counter FROM ratelimits WHERE sender = '{{ sender }}'"
+      register: verify_count
+      changed_when: false
+      failed_when: verify_count.stdout | int < 2
+
+    - name: The log line format is unchanged (queue ID is the 4th field)
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: >-
+          set -o pipefail;
+          grep -F ' sasl_username={{ sender }},' /var/log/policyd-rate-guard/policyd-rate-guard.log | tail -1 | awk '{print $4}'
+      register: verify_log
+      changed_when: false
+      failed_when: verify_log.stdout != 'MOLECULE1:'
+
+    - name: Rotate the log
+      ansible.builtin.command:
+        cmd: logrotate --force /etc/logrotate.d/policyd-rate-guard
+      changed_when: true
+
+    - name: Answer a policy request after the rotation
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          exec 3<>/dev/tcp/127.0.0.1/10033
+          printf '%s\n' request=smtpd_access_policy protocol_state=DATA queue_id=MOLECULE2 recipient_count=1 \
+            sasl_username={{ sender }} '' >&3
+          timeout 10 head -n 1 <&3
+      register: verify_policy_rotated
+      changed_when: false
+      failed_when: verify_policy_rotated.stdout != 'action=OK'
+
+    - name: Stat the new log file
+      ansible.builtin.stat:
+        path: /var/log/policyd-rate-guard/policyd-rate-guard.log
+      register: verify_new_log
+
+    - name: The daemon writes to the new log file (owned by the service, mode 0640)
+      ansible.builtin.command:
+        cmd: grep -c MOLECULE2 /var/log/policyd-rate-guard/policyd-rate-guard.log
+      register: verify_rotated_log
+      changed_when: false
+      failed_when: >-
+        verify_rotated_log.stdout | int != 1 or verify_new_log.stat.pw_name != 'policyd-rate-guard'
+        or verify_new_log.stat.gr_name != 'policyd-rate-guard' or verify_new_log.stat.mode != '0640'
+
+    - name: The cleanup job is retried when it fails
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard-cleanup.service
+      register: verify_cleanup_unit
+      failed_when: >-
+        verify_cleanup_unit.status.Restart != 'on-failure' or verify_cleanup_unit.status.StartLimitBurst != '60'
+
+    - name: The cleanup job runs
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard-cleanup.service
+        state: started
+
+    - name: Counters were reset by the cleanup
+      ansible.builtin.command:
+        cmd: >-
+          mysql -N -D policyd-rate-guard -e "SELECT rcpt_counter FROM ratelimits WHERE sender = '{{ sender }}'"
+      register: verify_reset
+      changed_when: false
+      failed_when: verify_reset.stdout | trim != '0'
+
+    - name: Sandbox score of the service
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: set -o pipefail; systemd-analyze security --no-pager policyd-rate-guard.service | tail -1
+      register: verify_security
+      changed_when: false
+
+    - name: Show the sandbox score
+      ansible.builtin.debug:
+        msg: '{{ verify_security.stdout }}'
+
+    - name: The sandbox score stays low (1.1 with the shipped hardening)
+      ansible.builtin.assert:
+        that: (verify_security.stdout | regex_search('([0-9]+[.][0-9]+) [A-Z]+', '\\1') | first | float) < 2.0
+        quiet: true
 
 - name: Fresh install checks
   hosts: all
@@ -53,3 +258,44 @@
         path: /tmp/planted-venv-ran
       register: verify_planted
       failed_when: verify_planted.stat.exists
+
+# Root runs git, pip and yoyo in the install directory: the role must not touch one it didn't make (e.g. 0.x's,
+# owned by postfix), and stop before changing anything
+- name: The role refuses an installation it didn't make
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: An installation owned by postfix, as role 0.5.2+ left it
+      ansible.builtin.file:
+        path: /opt/foreign-policyd/venv
+        state: directory
+        owner: postfix
+        group: postfix
+        mode: '0755'
+
+    - name: Run the role on it
+      block:
+        - name: Include the role
+          ansible.builtin.include_role:
+            name: onlime.policyd_rate_guard
+          vars:
+            policyd_install_path: /opt/foreign-policyd
+
+        - name: Not refused
+          ansible.builtin.fail:
+            msg: The role ran on an installation owned by postfix
+      rescue:
+        - name: Refused with the expected message
+          ansible.builtin.assert:
+            that: "'Move it away first' in ansible_failed_result.msg"
+            quiet: true
+
+    - name: Stat the installation after the refusal
+      ansible.builtin.stat:
+        path: /opt/foreign-policyd/venv
+      register: verify_foreign
+
+    - name: Nothing was changed
+      ansible.builtin.assert:
+        that: verify_foreign.stat.pw_name == 'postfix'
+        quiet: true
