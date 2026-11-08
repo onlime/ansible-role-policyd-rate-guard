@@ -1,5 +1,14 @@
+{#- URL-encoded credentials, then % doubled for configparser interpolation -#}
+{%- macro u(value) -%}
+{{ value | string | urlencode | replace('/', '%2F') | replace('%', '%%') }}
+{%- endmacro -%}
+# {{ ansible_managed }}
 [DEFAULT]
-sources = database/migrations
-database = mysql://{{ policyd_yoyo_mysql_user }}:{{ policyd_yoyo_mysql_pass }}@localhost:3306/{{ policyd_mysql_dbname }}
+sources = {{ policyd_install_path }}/database/migrations
+{% if policyd_mysql_unix_socket %}
+database = mysql://{{ u(policyd_yoyo_mysql_user) }}:{{ u(policyd_yoyo_mysql_pass) }}@/{{ u(policyd_mysql_dbname) }}?unix_socket={{ u(policyd_mysql_unix_socket) }}
+{% else %}
+database = mysql://{{ u(policyd_yoyo_mysql_user) }}:{{ u(policyd_yoyo_mysql_pass) }}@localhost:3306/{{ u(policyd_mysql_dbname) }}
+{% endif %}
 batch_mode = on
 verbosity = 0

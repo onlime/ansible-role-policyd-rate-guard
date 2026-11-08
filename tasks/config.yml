@@ -1,0 +1,28 @@
+---
+# Validated with the new code before it's put in place: `check` parses it and connects to the database
+- name: Deploy the configuration
+  ansible.builtin.template:
+    src: policyd-rate-guard.env.j2
+    dest: '{{ policyd_env_file }}'
+    owner: root
+    group: '{{ policyd_group }}'
+    mode: '0640'
+    validate: '{{ policyd_venv_path }}/bin/python -m policyd_rate_guard --env-file %s check'
+  notify: Restart policyd service
+  tags: [policyd-config]
+
+# Role 0.x kept them world-readable in the code directory (in a legacy backup they're root-only now)
+- name: Remove configuration files from the code directory
+  ansible.builtin.file:
+    path: '{{ policyd_install_path }}/{{ item }}'
+    state: absent
+  loop: [.env, yoyo.ini]
+
+- name: Install the log rotation
+  ansible.builtin.template:
+    src: logrotate.d/policyd-rate-guard.j2
+    dest: /etc/logrotate.d/{{ policyd_service_name }}
+    owner: root
+    group: root
+    mode: '0644'
+  tags: [policyd-logrotate]

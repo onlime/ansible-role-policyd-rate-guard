@@ -1,13 +1,44 @@
 ---
+# PolicydRateGuard, https://github.com/onlime/policyd-rate-guard
 policyd_repo: https://github.com/onlime/policyd-rate-guard.git
-policyd_version: main
+# A release tag (or a commit). Never a branch: every run would deploy whatever it points to.
+policyd_version: v1.0.0
 
 policyd_service_name: policyd-rate-guard
-policyd_install_path: '/opt/{{ policyd_service_name }}'
-policyd_log_path: '/var/log/{{ policyd_service_name }}'
-policyd_log_file: '{{ policyd_log_path }}/{{ policyd_service_name }}.log'
+# Dedicated system user the daemon and the cleanup job run as (no longer `postfix`)
+policyd_user: policyd-rate-guard
+policyd_group: policyd-rate-guard
+# Code and venv, owned by root
+policyd_install_path: /opt/policyd-rate-guard
+policyd_venv_path: '{{ policyd_install_path }}/venv'
+# Configuration, readable by root and the service user only
+policyd_config_path: /etc/policyd-rate-guard
+policyd_env_file: '{{ policyd_config_path }}/policyd-rate-guard.env'
+policyd_log_path: /var/log/policyd-rate-guard
+policyd_log_file: '{{ policyd_log_path }}/policyd-rate-guard.log'
+policyd_log_rotate: 365
+policyd_log_level: INFO
+# Also log to syslog (mail.log)
+policyd_syslog: true
+
+# Listen addresses of the systemd socket unit: `host:port` or an absolute unix socket path. For a unix socket that
+# only Postfix may use: ['/var/spool/postfix/private/policyd-rate-guard'], Postfix: unix:private/policyd-rate-guard
+policyd_listen:
+  - 127.0.0.1:10033
+policyd_socket_user: postfix
+policyd_socket_group: postfix
+policyd_socket_mode: '0600'
+
+policyd_quota: 1000
+policyd_action_text_blocked: ''
+# Answer on internal errors: DUNNO (accept) or DEFER_IF_PERMIT
+policyd_fail_action: DUNNO
+# Days to keep rows in the messages table, 0 = forever
+policyd_message_retention: 365
 policyd_sentry_dsn: ''
-policyd_message_retention: 0
+policyd_sentry_environment: prod
+# Additional environment variables for the env file, e.g. {DB_POOL_MAXCONNECTIONS: 20}
+policyd_extra_env: {}
 
 # Webhook
 policyd_webhook_enabled: false
@@ -15,24 +46,32 @@ policyd_webhook_url: ''
 policyd_webhook_secret: '{{ vault_policyd_webhook_secret }}'
 policyd_webhook_use_jwt: false
 
-# MySQL user for the application
+# Database. The daemon connects through the unix socket (empty: TCP to localhost:3306).
 policyd_mysql_dbname: '{{ policyd_service_name }}'
+policyd_mysql_unix_socket: /run/mysqld/mysqld.sock
+# Socket used by the mysql_db/mysql_user tasks (empty: the module's default, e.g. from ~/.my.cnf)
+policyd_mysql_login_unix_socket: ''
+# Authentication plugin of the created users; MariaDB before 12.1 has no caching_sha2_password, use ''
+policyd_mysql_plugin: caching_sha2_password
+# Data-only user for the daemon
 policyd_mysql_user: policyd
 policyd_mysql_pass: '{{ vault_policyd_mysql_pass }}'
-
-# MySQL user for yoyo migrations (defaults to the same as the app user)
-policyd_yoyo_mysql_user: '{{ policyd_mysql_user }}'
-policyd_yoyo_mysql_pass: '{{ policyd_mysql_pass }}'
-
-# mysql> SHOW GRANTS FOR `policyd`@localhost;
-# +-------------------------------------------------------------------------+
-# | Grants for policyd@localhost                                            |
-# +-------------------------------------------------------------------------+
-# | GRANT USAGE ON *.* TO `policyd`@`localhost`                             |
-# | GRANT ALL PRIVILEGES ON `policyd-rate-guard`.* TO `policyd`@`localhost` |
-# +-------------------------------------------------------------------------+
+# Separate user for the schema migrations (only in the root-only yoyo.ini)
+policyd_yoyo_mysql_user: policyd-rate-guard
+policyd_yoyo_mysql_pass: '{{ vault_policyd_yoyo_mysql_pass }}'
 policyd_mysql_users:
   - name: '{{ policyd_mysql_user }}'
     password: '{{ policyd_mysql_pass }}'
     privs:
+      - '{{ policyd_mysql_dbname }}.*:SELECT,INSERT,UPDATE,DELETE'
+  - name: '{{ policyd_yoyo_mysql_user }}'
+    password: '{{ policyd_yoyo_mysql_pass }}'
+    privs:
       - '{{ policyd_mysql_dbname }}.*:ALL'
+# Passwords of existing users are only changed with -e policyd_rotate_passwords=true (the module can't compare
+# caching_sha2_password hashes, so it would otherwise reset them, and flush the auth cache, on every run)
+policyd_rotate_passwords: false
+
+# Upgrade from role 0.x: an install dir not owned by root (0.5.2+ made it owned by `postfix`) is never reused.
+# It's moved to this path (root, 0700) for inspection, and a fresh clone and venv are created.
+policyd_legacy_backup_path: '{{ policyd_install_path }}.pre-1.0'

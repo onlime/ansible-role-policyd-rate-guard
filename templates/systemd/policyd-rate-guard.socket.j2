@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+[Unit]
+Description=PolicydRateGuard policy service socket
+Documentation=https://github.com/onlime/policyd-rate-guard
+PartOf={{ policyd_service_name }}.service
+{% if policyd_listen | select('match', '^/') | list %}
+RequiresMountsFor=/var/spool/postfix
+{% endif %}
+
+[Socket]
+{% for address in policyd_listen %}
+ListenStream={{ address }}
+{% endfor %}
+{% if policyd_listen | select('match', '^/') | list %}
+SocketUser={{ policyd_socket_user }}
+SocketGroup={{ policyd_socket_group }}
+SocketMode={{ policyd_socket_mode }}
+{% endif %}
+Backlog=256
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

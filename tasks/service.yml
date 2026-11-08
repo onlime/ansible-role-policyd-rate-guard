@@ -1,0 +1,80 @@
+---
+- name: Install the systemd units
+  ansible.builtin.template:
+    src: systemd/{{ item.src }}.j2
+    dest: /etc/systemd/system/{{ item.dest }}
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - { src: policyd-rate-guard.socket, dest: '{{ policyd_service_name }}.socket', notify: socket }
+    - { src: policyd-rate-guard.service, dest: '{{ policyd_service_name }}.service', notify: service }
+    - { src: policyd-rate-guard-cleanup.service, dest: '{{ policyd_service_name }}-cleanup.service', notify: none }
+    - { src: policyd-rate-guard-cleanup.timer, dest: '{{ policyd_service_name }}-cleanup.timer', notify: none }
+  loop_control:
+    label: '{{ item.dest }}'
+  register: policyd_units
+
+# Not a handler: the socket switch below needs the new units now
+- name: Reload systemd  # noqa: no-handler
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: policyd_units is changed
+
+- name: Check the socket unit
+  ansible.builtin.systemd_service:
+    name: '{{ policyd_service_name }}.socket'
+  register: policyd_socket_unit
+  check_mode: false
+
+- name: Note whether the socket must be (re)started
+  ansible.builtin.set_fact:
+    policyd_socket_restart: >-
+      {{ policyd_socket_unit.status.ActiveState | default('inactive') != 'active'
+         or policyd_units.results | selectattr('item.notify', 'equalto', 'socket') | selectattr('changed') | list | length > 0 }}
+    # In a dry run, new or changed unit files aren't there yet: report instead of acting on them
+    policyd_units_pending: '{{ ansible_check_mode and policyd_units is changed }}'
+
+- name: Dry run of the unit changes
+  ansible.builtin.debug:
+    msg: >-
+      Would install the changed units{{ ', stop the running service, start the socket' if policyd_socket_restart else '' }}
+      and restart the service.
+  when: policyd_units_pending | bool
+
+# A service that isn't socket-activated (0.x) or a changed socket: the service must release the address first
+- name: Stop the service to (re)bind the socket
+  ansible.builtin.systemd_service:
+    name: '{{ policyd_service_name }}.service'
+    state: stopped
+  when:
+    - policyd_socket_restart | bool
+    - not policyd_units_pending | bool
+
+- name: Restart the socket
+  ansible.builtin.systemd_service:
+    name: '{{ policyd_service_name }}.socket'
+    state: restarted
+    enabled: true
+  when:
+    - policyd_socket_restart | bool
+    - not policyd_units_pending | bool
+
+- name: Restart the service for a new unit
+  ansible.builtin.systemd_service:
+    name: '{{ policyd_service_name }}.service'
+    state: restarted
+  when:
+    - policyd_units.results | selectattr('item.notify', 'equalto', 'service') | selectattr('changed') | list | length > 0
+    - not policyd_units_pending | bool
+
+- name: Start and enable the socket, the service and the cleanup timer
+  ansible.builtin.systemd_service:
+    name: '{{ item }}'
+    state: started
+    enabled: true
+  loop:
+    - '{{ policyd_service_name }}.socket'
+    - '{{ policyd_service_name }}.service'
+    - '{{ policyd_service_name }}-cleanup.timer'
+  when: not policyd_units_pending | bool

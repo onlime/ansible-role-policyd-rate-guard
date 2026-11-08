@@ -1,14 +1,14 @@
+# {{ ansible_managed }}
 {{ policyd_log_file }} {
-	rotate 365
+	rotate {{ policyd_log_rotate | int }}
 	daily
 	dateext
 	missingok
 	notifempty
 	compress
-	# delaycompress
-	create 644 postfix postfix
-	sharedscripts
-	postrotate
-		if [ -f /bin/systemctl ] ; then systemctl restart {{ policyd_service_name }}.service ; else service {{ policyd_service_name }} restart >/dev/null 2>&1 ; fi || true
-	endscript
+	# keep yesterday's file uncompressed: the daemon may still write a few lines to it before it reopens the log
+	delaycompress
+	su {{ policyd_user }} adm
+	create 0640 {{ policyd_user }} adm
+	# no restart needed: the daemon reopens the file after rotation
 }

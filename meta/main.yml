@@ -1,21 +1,20 @@
 ---
-
 galaxy_info:
   role_name: policyd_rate_guard
   namespace: onlime
-  description: Install PolicydRateGuard on a Postfix mail server
+  description: Install PolicydRateGuard, a sender rate limit policy daemon, on a Debian mail server with Postfix
   author: Philip Iezzi
   company: Onlime GmbH
-  license: GPLv3
-  min_ansible_version: '2.15'
+  license: GPL-3.0-only
+  min_ansible_version: '2.16'
   platforms:
     - name: Debian
       versions:
-        - bullseye
-        - bookworm
+        - trixie
   galaxy_tags:
     - mail
     - postfix
     - policyd
+    - ratelimit
 
 dependencies: []

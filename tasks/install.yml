@@ -1,0 +1,140 @@
+---
+- name: Move a legacy installation aside
+  when: policyd_legacy_install | default(false)
+  block:
+    - name: Check for an earlier backup
+      ansible.builtin.stat:
+        path: '{{ policyd_legacy_backup_path }}'
+      register: policyd_legacy_backup_stat
+
+    - name: Fail if a backup of an earlier upgrade is still there
+      ansible.builtin.fail:
+        msg: >-
+          {{ policyd_install_path }} is not owned by root and {{ policyd_legacy_backup_path }} already exists.
+          Inspect and remove the old backup first.
+      when: policyd_legacy_backup_stat.stat.exists
+
+    # The running 0.x daemon keeps serving from memory until the new units take over at the end of the role
+    - name: Move the legacy installation to {{ policyd_legacy_backup_path }}
+      ansible.builtin.command:
+        cmd: mv {{ policyd_install_path | quote }} {{ policyd_legacy_backup_path | quote }}
+        creates: '{{ policyd_legacy_backup_path }}'
+
+    - name: Make the backup accessible to root only
+      ansible.builtin.file:
+        path: '{{ policyd_legacy_backup_path }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+- name: Dry run of a legacy upgrade
+  ansible.builtin.debug:
+    msg: >-
+      {{ policyd_install_path }} is not owned by root: it will be moved to {{ policyd_legacy_backup_path }},
+      then {{ policyd_version }} is cloned fresh and a new venv is created.
+  when: ansible_check_mode and policyd_legacy_install | default(false)
+
+- name: Check out PolicydRateGuard {{ policyd_version }}
+  ansible.builtin.git:
+    repo: '{{ policyd_repo }}'
+    dest: '{{ policyd_install_path }}'
+    version: '{{ policyd_version }}'
+    umask: '0022'
+    force: false
+  register: policyd_git
+  notify: Restart policyd service
+  # in a dry run the legacy checkout is still there, owned by postfix ("dubious ownership")
+  when: not (ansible_check_mode and policyd_legacy_install | default(false))
+
+- name: Make sure the install directory is root-owned
+  ansible.builtin.file:
+    path: '{{ policyd_install_path }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+# Python's minor version changes with a Debian release upgrade, which leaves the venv broken
+- name: Read the Python version of the existing venv
+  ansible.builtin.slurp:
+    src: '{{ policyd_venv_path }}/pyvenv.cfg'
+  register: policyd_pyvenv_cfg
+  failed_when: false
+
+- name: Remove a venv of another Python version
+  ansible.builtin.file:
+    path: '{{ policyd_venv_path }}'
+    state: absent
+  when:
+    - policyd_pyvenv_cfg.content is defined
+    - >-
+      ('version = ' ~ ansible_facts['python']['version']['major'] ~ '.' ~ ansible_facts['python']['version']['minor'] ~ '.')
+      not in (policyd_pyvenv_cfg.content | b64decode)
+
+- name: Create the venv
+  ansible.builtin.command:
+    cmd: /usr/bin/python3 -m venv {{ policyd_venv_path | quote }}
+    creates: '{{ policyd_venv_path }}/bin/python'
+
+# Hash-pinned binary wheels only: nothing is built or executed from source distributions as root
+- name: Install the Python dependencies
+  ansible.builtin.command:
+    argv:
+      - '{{ policyd_venv_path }}/bin/pip'
+      - install
+      - --disable-pip-version-check
+      - --no-input
+      - --require-hashes
+      - '--only-binary=:all:'
+      - --no-deps
+      - -r
+      - '{{ policyd_install_path }}/requirements.txt'
+  register: policyd_pip
+  changed_when: "'Successfully installed' in policyd_pip.stdout"
+  notify: Restart policyd service
+
+- name: Find the venv's site-packages
+  ansible.builtin.command:
+    argv: ['{{ policyd_venv_path }}/bin/python', -c, 'import sysconfig; print(sysconfig.get_path("purelib"))']
+  register: policyd_purelib
+  changed_when: false
+  check_mode: false
+  failed_when: policyd_purelib.rc != 0 and not ansible_check_mode
+
+# The app is loaded from the checkout (no build backend needed on the server)
+- name: Add the application to the venv
+  ansible.builtin.copy:
+    content: "{{ policyd_install_path }}/src\n"
+    dest: '{{ policyd_purelib.stdout }}/policyd-rate-guard.pth'
+    owner: root
+    group: root
+    mode: '0644'
+  when: policyd_purelib.stdout | default('') | length > 0
+  notify: Restart policyd service
+
+# ProtectSystem=strict: the service can't write __pycache__ itself
+- name: Compile the application
+  ansible.builtin.command:
+    argv: ['{{ policyd_venv_path }}/bin/python', -m, compileall, -q, '{{ policyd_install_path }}/src']
+  when: policyd_git is changed or policyd_pip is changed
+  changed_when: true
+
+- name: Remove group/world write permissions and foreign ownership in the install directory
+  ansible.builtin.shell:
+    cmd: >-
+      find {{ policyd_install_path | quote }} \( -perm /022 -not -type l \) -print -exec chmod go-w {} + ;
+      find {{ policyd_install_path | quote }} \( -not -user root -o -not -group root \) -print
+      -exec chown -h root:root {} +
+  register: policyd_fix_permissions
+  changed_when: policyd_fix_permissions.stdout | length > 0
+  when: not ansible_check_mode
+
+- name: Check that the checkout is unmodified  # noqa: command-instead-of-module (the git module has no status)
+  ansible.builtin.command:
+    cmd: git -C {{ policyd_install_path | quote }} status --porcelain --untracked-files=no
+  register: policyd_git_status
+  changed_when: false
+  check_mode: false
+  failed_when: policyd_git_status.rc != 0 or policyd_git_status.stdout | length > 0
+  when: not (ansible_check_mode and policyd_legacy_install | default(false))

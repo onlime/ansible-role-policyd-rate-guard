@@ -1,0 +1,25 @@
+---
+# python3-pymysql: for the ansible.mysql modules on the target
+- name: Install packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - python3-venv
+      - python3-pymysql
+      - logrotate
+    state: present
+
+- name: Create the system group
+  ansible.builtin.group:
+    name: '{{ policyd_group }}'
+    system: true
+
+- name: Create the system user
+  ansible.builtin.user:
+    name: '{{ policyd_user }}'
+    group: '{{ policyd_group }}'
+    system: true
+    create_home: false
+    home: /nonexistent
+    shell: /usr/sbin/nologin
+    comment: PolicydRateGuard

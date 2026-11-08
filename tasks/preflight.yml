@@ -1,0 +1,38 @@
+---
+- name: Assert a supported platform (Debian 13+)
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Debian'
+      - ansible_facts['distribution_major_version'] is version('13', '>=')
+      - ansible_facts['python']['version']['major'] == 3
+    fail_msg: PolicydRateGuard 1.x needs Debian 13 (trixie) or later
+    quiet: true
+
+- name: Assert required variables
+  ansible.builtin.assert:
+    that:
+      - policyd_version | length > 0
+      - policyd_mysql_pass | length > 0
+      - policyd_yoyo_mysql_pass | length > 0
+      - policyd_mysql_user != policyd_yoyo_mysql_user
+      - policyd_fail_action in ['DUNNO', 'DEFER_IF_PERMIT']
+      - policyd_listen | length > 0
+      - not policyd_webhook_enabled or (policyd_webhook_url | length > 0 and policyd_webhook_secret | length > 0)
+    fail_msg: >-
+      Set policyd_mysql_pass and policyd_yoyo_mysql_pass (two different database users since role 1.0),
+      a valid policyd_fail_action, policyd_listen, and the webhook URL and secret when the webhook is enabled.
+    quiet: true
+  no_log: true
+
+- name: Check the existing installation
+  ansible.builtin.stat:
+    path: '{{ policyd_install_path }}'
+  register: policyd_install_stat
+
+# Role 0.5.2+ chowned the checkout including .git and the venv to `postfix`, and ran code from it as root
+# (yoyo, pip, git hooks). Anything running as postfix could have planted code there, so it's never reused.
+- name: Detect a legacy (0.x) installation
+  ansible.builtin.set_fact:
+    policyd_legacy_install: >-
+      {{ policyd_install_stat.stat.exists and (policyd_install_stat.stat.pw_name != 'root'
+         or policyd_install_stat.stat.gr_name != 'root' or policyd_install_stat.stat.mode != '0755') }}

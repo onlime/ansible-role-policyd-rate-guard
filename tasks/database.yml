@@ -1,0 +1,74 @@
+---
+- name: Create the database
+  ansible.mysql.mysql_db:
+    name: '{{ policyd_mysql_dbname }}'
+    encoding: utf8mb4
+    state: present
+    login_unix_socket: '{{ policyd_mysql_login_unix_socket or omit }}'
+
+# The migrations need their user before anything else; grants of the other users may refer to tables
+# (e.g. SELECT on `messages`) that only exist after the migrations.
+- name: Configure the migration user
+  ansible.mysql.mysql_user:
+    name: '{{ policyd_yoyo_mysql_user }}'
+    password: "{{ omit if policyd_mysql_plugin else policyd_yoyo_mysql_pass }}"
+    plugin: '{{ policyd_mysql_plugin or omit }}'
+    plugin_auth_string: "{{ policyd_yoyo_mysql_pass if policyd_mysql_plugin else omit }}"
+    update_password: "{{ 'always' if policyd_rotate_passwords | bool else 'on_create' }}"
+    priv: '{{ policyd_mysql_dbname }}.*:ALL'
+    state: present
+    login_unix_socket: '{{ policyd_mysql_login_unix_socket or omit }}'
+  no_log: true
+  tags: [mysql-users, policyd-mysql-users]
+
+# Root-only: contains the password of the user that may change the schema
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: '{{ policyd_config_path }}'
+    state: directory
+    owner: root
+    group: '{{ policyd_group }}'
+    mode: '0750'
+
+- name: Deploy the migration configuration
+  ansible.builtin.template:
+    src: yoyo.ini.j2
+    dest: '{{ policyd_config_path }}/yoyo.ini'
+    owner: root
+    group: root
+    mode: '0600'
+  tags: [policyd-mysql-users]
+
+- name: List pending database migrations
+  ansible.builtin.command:
+    argv: ['{{ policyd_venv_path }}/bin/yoyo', list, --config, '{{ policyd_config_path }}/yoyo.ini']
+  register: policyd_migrations
+  changed_when: false
+  check_mode: false
+  failed_when: policyd_migrations.rc != 0 and not ansible_check_mode
+  tags: [quick-deploy]
+
+# Runs before the new code is started; migrations must work with the running (old) code too
+- name: Apply database migrations
+  ansible.builtin.command:
+    argv: ['{{ policyd_venv_path }}/bin/yoyo', apply, --batch, --config, '{{ policyd_config_path }}/yoyo.ini']
+  when: policyd_migrations.stdout is regex('(?m)^U\s')
+  changed_when: true
+  tags: [quick-deploy]
+
+- name: Configure the database users and grants
+  ansible.mysql.mysql_user:
+    name: '{{ item.name }}'
+    host: '{{ item.host | default(omit) }}'
+    password: "{{ omit if policyd_mysql_plugin else item.password }}"
+    plugin: '{{ policyd_mysql_plugin or omit }}'
+    plugin_auth_string: "{{ item.password if policyd_mysql_plugin else omit }}"
+    update_password: "{{ 'always' if policyd_rotate_passwords | bool else 'on_create' }}"
+    priv: "{{ item.privs | join('/') }}"
+    state: present
+    login_unix_socket: '{{ policyd_mysql_login_unix_socket or omit }}'
+  loop: '{{ policyd_mysql_users }}'
+  loop_control:
+    label: '{{ item.name }}'
+  no_log: true
+  tags: [mysql-users, policyd-mysql-users]

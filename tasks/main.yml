@@ -1,126 +1,22 @@
 ---
-# Install PolicydRateGuard
-# https://github.com/onlime/policyd-rate-guard
-- name: Git clone repo
-  ansible.builtin.git:
-    repo: '{{ policyd_repo }}'
-    dest: '{{ policyd_install_path }}'
-    version: '{{ policyd_version }}'
-  notify:
-    - Apply yoyo migrations
-    - Restart policyd service
-  tags:
-    - quick-deploy
+# Install PolicydRateGuard, https://github.com/onlime/policyd-rate-guard
+- name: Preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [always]
 
-- name: Deploy config files
-  ansible.builtin.template:
-    src: '{{ item }}.j2'
-    dest: '{{ policyd_install_path }}/{{ item }}'
-    mode: '0644'
-  loop:
-    - yoyo.ini
-    - .env
-  notify: Restart policyd service
+- name: Packages and system user
+  ansible.builtin.import_tasks: system.yml
 
-# NOTE: setuptools is a requirement for ansible.builtin.pip
-- name: Install Python3 packages for venv
-  ansible.builtin.apt:
-    name:
-      - python3-venv
-      - python3-pip
-      - python3-setuptools
+- name: Code and virtualenv
+  ansible.builtin.import_tasks: install.yml
+  tags: [quick-deploy]
 
-# $ pip install --upgrade pip
-- name: Upgrade pip in venv
-  ansible.builtin.pip:
-    chdir: '{{ policyd_install_path }}'
-    name: pip
-    state: latest  # noqa package-latest
-    virtualenv: venv
-    virtualenv_command: /usr/bin/python3 -m venv
+- name: Database, users and migrations
+  ansible.builtin.import_tasks: database.yml
 
-- name: Install Python requirements in venv
-  ansible.builtin.pip:
-    chdir: '{{ policyd_install_path }}'
-    requirements: requirements.txt
-    # state: forcereinstall
-    virtualenv: venv
-    virtualenv_command: /usr/bin/python3 -m venv
-  notify: Restart policyd service
+- name: Configuration
+  ansible.builtin.import_tasks: config.yml
 
-- name: Ensure policyd-rate-guard directory ownership
-  ansible.builtin.file:
-    path: '{{ policyd_install_path }}'
-    owner: postfix
-    group: postfix
-    recurse: true
-
-- name: Create database
-  ansible.mysql.mysql_db:
-    name: '{{ policyd_mysql_dbname }}'
-    state: present
-  register: policyd_db
-  notify: Apply yoyo migrations
-
-# We cannot use `ansible.builtin.meta: flush_handlers` here, as there are other
-# handlers triggered from previous tasks, but we only want to run the
-# `Apply yoyo migrations` handler immediately!
-- name: Initial database schema setup with yoyo
-  # noqa: no-changed-when no-handler
-  ansible.builtin.shell: |
-    source venv/bin/activate
-    yoyo apply
-  args:
-    executable: /bin/bash
-    chdir: '{{ policyd_install_path }}'
-  when: policyd_db is changed
-
-- name: Configure MySQL Database User and Grants
-  ansible.mysql.mysql_user:
-    name: '{{ item.name }}'
-    host: '{{ item.host | default(omit) }}'
-    plugin: caching_sha2_password
-    plugin_auth_string: '{{ item.password }}'
-    priv: "{{ item.privs | join('/') }}"
-    # append_privs: true
-    state: present
-  loop: '{{ policyd_mysql_users }}'
-  no_log: true  # prevent logging of passwords
-  notify: Restart policyd service
-  tags:
-    - mysql-users
-    - policyd-mysql-users
-
-- name: Create log directory
-  ansible.builtin.file:
-    path: '{{ policyd_log_path }}'
-    state: directory
-    owner: postfix
-    group: postfix
-    mode: '0750'
-
-- name: Install logrotation for {{ policyd_log_file }}
-  ansible.builtin.template:
-    src: logrotate.d/{{ policyd_service_name }}.j2
-    dest: /etc/logrotate.d/{{ policyd_service_name }}
-    mode: '0644'
-  tags: policyd-logrotate
-
-- name: Deploy Systemd unit files
-  ansible.builtin.copy:
-    src: '{{ policyd_install_path }}/deployment/systemd/'
-    dest: /etc/systemd/system/
-    mode: '0644'
-    remote_src: true
-  notify:
-    - Reload systemd daemon
-    - Restart policyd service
-
-- name: Start and enable service
-  ansible.builtin.service:
-    name: '{{ item }}'
-    state: started
-    enabled: true
-  loop:
-    - policyd-rate-guard.service
-    - policyd-rate-guard-cleanup.timer
+- name: Systemd units and service
+  ansible.builtin.import_tasks: service.yml
+  tags: [quick-deploy]
