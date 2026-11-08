@@ -20,6 +20,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - `policyd_message_retention` defaults to `365` (was `0`, keep forever).
 - Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket.
 - Renamed handler and tasks; `quick-deploy` now also covers migrations and units.
+- `policyd_webhook_use_jwt` is removed: PolicydRateGuard 1.0 always authenticates the webhook with a JWT in the `Authorization` header (the simple token is gone). The role fails early if it's still set to `false`.
 
 **Improved:**
 

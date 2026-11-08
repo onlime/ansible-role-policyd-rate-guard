@@ -24,6 +24,15 @@
     quiet: true
   no_log: true
 
+# PolicydRateGuard 1.0 always authenticates the webhook with a JWT (Authorization: Bearer)
+- name: Assert the webhook doesn't expect the removed simple token
+  ansible.builtin.assert:
+    that: policyd_webhook_use_jwt | default(true) | bool
+    fail_msg: >-
+      policyd_webhook_use_jwt=false: the simple token was removed in PolicydRateGuard 1.0, the webhook always sends a
+      JWT in the Authorization header. Switch the receiving side to JWT and remove the variable.
+    quiet: true
+
 - name: Check the existing installation
   ansible.builtin.stat:
     path: '{{ policyd_install_path }}'

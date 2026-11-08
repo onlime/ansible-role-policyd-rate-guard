@@ -73,7 +73,7 @@ To change the database passwords, update them in the vault and run once with `-e
 | `policyd_message_retention` | `365` | Days to keep rows in `messages` (`0`: forever) |
 | `policyd_log_level`, `policyd_log_file`, `policyd_log_rotate`, `policyd_syslog` | `INFO`, `/var/log/policyd-rate-guard/policyd-rate-guard.log`, `365`, `true` | Logging |
 | `policyd_sentry_dsn`, `policyd_sentry_environment` | , `prod` | Sentry error reporting |
-| `policyd_webhook_enabled`, `policyd_webhook_url`, `policyd_webhook_secret`, `policyd_webhook_use_jwt` | `false`, , `vault_policyd_webhook_secret`, `false` | Webhook when a sender reaches the quota; use JWT |
+| `policyd_webhook_enabled`, `policyd_webhook_url`, `policyd_webhook_secret` | `false`, , `vault_policyd_webhook_secret` | Webhook when a sender reaches the quota, authenticated with a JWT (base64 secret) |
 | `policyd_extra_env` | `{}` | More environment variables, e.g. `{DB_POOL_MAXCONNECTIONS: 20}` |
 | `policyd_user`, `policyd_install_path`, `policyd_config_path` | `policyd-rate-guard`, `/opt/policyd-rate-guard`, `/etc/policyd-rate-guard` | Paths and user |
 

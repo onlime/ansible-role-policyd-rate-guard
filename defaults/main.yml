@@ -44,7 +44,6 @@ policyd_extra_env: {}
 policyd_webhook_enabled: false
 policyd_webhook_url: ''
 policyd_webhook_secret: '{{ vault_policyd_webhook_secret }}'
-policyd_webhook_use_jwt: false
 
 # Database. The daemon connects through the unix socket (empty: TCP to localhost:3306).
 policyd_mysql_dbname: '{{ policyd_service_name }}'
