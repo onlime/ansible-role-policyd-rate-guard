@@ -34,10 +34,10 @@ provisioner:
         policyd_webhook_enabled: true
         policyd_webhook_url: 'https://airpane.example/api/policyd/{sender}'
         policyd_webhook_secret: Wk9YZXliVlVtY2pQcFlFUm9KY1U1ZkFFaUpWTk1FU20=
-        # a unix socket for Postfix in addition to TCP
+        # a unix socket for Postfix in addition to TCP (systemd creates its directory)
         policyd_listen:
           - 127.0.0.1:10033
-          - /var/spool/postfix/private/policyd-rate-guard
+          - /var/spool/postfix/policyd-rate-guard/policyd.sock
 verifier:
   name: ansible
 scenario:

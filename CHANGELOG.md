@@ -20,7 +20,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - Debian 13 (trixie) only, Ansible 2.16+ (`min_ansible_version` was 2.15).
 - New required variable `policyd_yoyo_mysql_pass`.
 - `policyd_message_retention` defaults to `365` (was `0`, keep forever).
-- Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket.
+- Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket. A unix socket must be in a directory only root can write to (e.g. `/var/spool/postfix/policyd-rate-guard/policyd.sock`): the role refuses one like Postfix's `private/`, because systemd's chown of the socket follows a symlink.
 - The handlers `Apply yoyo migrations` and `Reload systemd daemon` are gone (migrations and the reload are regular tasks now), and tasks were renamed; `quick-deploy` now also covers migrations and units.
 - `policyd_log_path` is removed: the log is always in `/var/log/<service name>/`, which the unit creates (`LogsDirectory=`) and which is the only place the sandboxed daemon may write to. `policyd_log_file` must stay in that directory. logrotate creates the files with the service user and group, mode 0640 (0.x: 0644 `postfix`), and no longer restarts the daemon.
 - `policyd_webhook_use_jwt` is removed: PolicydRateGuard 1.0 always authenticates the webhook with a JWT in the `Authorization` header (the simple token is gone). The role fails early if it's still set to `false`.

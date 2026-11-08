@@ -45,6 +45,41 @@
     quiet: true
   when: policyd_webhook_enabled | bool
 
+# systemd chowns a unix socket to policyd_socket_user with chown(), which follows a symlink: in a directory another
+# user can write to (like Postfix's private/, owned by postfix), that user could swap the socket for a symlink while
+# the socket unit starts, and own any file. Every existing directory up to / must be root's and not writable by
+# group or others; systemd creates missing ones as root 0755.
+- name: Look for unix socket directories that others than root can write to
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      for dir in {{ policyd_listen | select('match', '^/') | map('dirname') | unique | map('quote') | join(' ') }}; do
+        d=$dir
+        while :; do
+          if [ -L "$d" ]; then
+            echo "$d"
+          elif [ -e "$d" ]; then
+            [ -d "$d" ] && [ "$(stat -c %u "$d")" = 0 ] && [ $(( 0$(stat -c %a "$d") & 022 )) = 0 ] || echo "$d"
+          fi
+          [ "$d" = / ] && break
+          d=$(dirname "$d")
+        done
+      done
+  register: policyd_socket_dirs
+  changed_when: false
+  check_mode: false
+  when: policyd_listen | select('match', '^/') | list | length > 0
+
+- name: Refuse a unix socket in a directory that others than root can write to
+  ansible.builtin.assert:
+    that: policyd_socket_dirs.stdout | default('') | length == 0
+    fail_msg: >-
+      {{ policyd_socket_dirs.stdout_lines | default([]) | join(', ') }}: a unix socket in policyd_listen must be in a
+      directory that only root can write to (and only root up to /), e.g.
+      /var/spool/postfix/policyd-rate-guard/policyd.sock, never in Postfix's private/. Nothing was changed.
+    quiet: true
+
 - name: Check the existing installation
   ansible.builtin.stat:
     path: '{{ policyd_install_path }}'

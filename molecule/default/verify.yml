@@ -211,19 +211,24 @@
   hosts: all
   gather_facts: false
   vars:
-    unix_socket: /var/spool/postfix/private/policyd-rate-guard
+    unix_socket: /var/spool/postfix/policyd-rate-guard/policyd.sock
   tasks:
-    - name: Stat the unix socket
+    - name: Stat the unix socket and its directory
       ansible.builtin.stat:
-        path: '{{ unix_socket }}'
+        path: '{{ item }}'
+        follow: false
+      loop: ['{{ unix_socket }}', '{{ unix_socket | dirname }}']
       register: verify_unix_socket
 
-    - name: The unix socket belongs to postfix, mode 0600
+    - name: The unix socket belongs to postfix, mode 0600, in a directory only root can write to
       ansible.builtin.assert:
         that:
-          - verify_unix_socket.stat.issock
-          - verify_unix_socket.stat.pw_name == 'postfix'
-          - verify_unix_socket.stat.mode == '0600'
+          - verify_unix_socket.results[0].stat.issock
+          - verify_unix_socket.results[0].stat.pw_name == 'postfix'
+          - verify_unix_socket.results[0].stat.mode == '0600'
+          - verify_unix_socket.results[1].stat.isdir
+          - verify_unix_socket.results[1].stat.pw_name == 'root'
+          - verify_unix_socket.results[1].stat.mode == '0755'
         quiet: true
 
     - name: Answer a policy request on the unix socket (as postfix)
@@ -258,6 +263,43 @@
         path: /tmp/planted-venv-ran
       register: verify_planted
       failed_when: verify_planted.stat.exists
+
+# systemd's chown of a unix socket follows a symlink: never in a directory postfix (or anybody but root) can write to
+- name: The role refuses a unix socket in Postfix's private/
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Postfix's private/, as Postfix creates it (it never starts in this container)
+      ansible.builtin.file:
+        path: /var/spool/postfix/private
+        state: directory
+        owner: postfix
+        group: root
+        mode: '0700'
+
+    - name: Run the role with a socket in private/
+      block:
+        - name: Include the role
+          ansible.builtin.include_role:
+            name: onlime.policyd_rate_guard
+          vars:
+            policyd_listen: [127.0.0.1:10033, /var/spool/postfix/private/policyd-rate-guard]
+
+        - name: Not refused
+          ansible.builtin.fail:
+            msg: The role accepted a unix socket in Postfix's private/
+      rescue:
+        - name: Refused with the expected message
+          ansible.builtin.assert:
+            that: "'/var/spool/postfix/private' in ansible_failed_result.msg and 'only root can write to' in ansible_failed_result.msg"
+            quiet: true
+
+    - name: Stat the socket unit after the refusal
+      ansible.builtin.command:
+        cmd: grep -c private /etc/systemd/system/policyd-rate-guard.socket
+      register: verify_private_unit
+      changed_when: false
+      failed_when: verify_private_unit.stdout | trim != '0'
 
 # Root runs git, pip and yoyo in the install directory: the role must not touch one it didn't make (e.g. 0.x's,
 # owned by postfix), and stop before changing anything

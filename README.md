@@ -66,7 +66,7 @@ To change the database passwords, update them in the vault and run once with `-e
 | `policyd_mysql_login_unix_socket` | | Socket for the `mysql_db`/`mysql_user` tasks |
 | `policyd_mysql_plugin` | `caching_sha2_password` | Authentication plugin of the users (`''` for the server default) |
 | `policyd_rotate_passwords` | `false` | Update the passwords of existing users |
-| `policyd_listen` | `['127.0.0.1:10033']` | Listen addresses of the socket unit; a path like `/var/spool/postfix/private/policyd-rate-guard` creates a unix socket owned by `policyd_socket_user`/`_group` (`postfix`) with `policyd_socket_mode` (`0600`) |
+| `policyd_listen` | `['127.0.0.1:10033']` | Listen addresses of the socket unit; a path like `/var/spool/postfix/policyd-rate-guard/policyd.sock` (Postfix: `unix:policyd-rate-guard/policyd.sock`) creates a unix socket owned by `policyd_socket_user`/`_group` (`postfix`) with `policyd_socket_mode` (`0600`). Only in a directory nobody but root can write to: the role refuses one like Postfix's `private/`, because systemd's chown of the socket follows a symlink. systemd creates a missing directory as root 0755. |
 | `policyd_quota` | `1000` | Default quota of new senders |
 | `policyd_action_text_blocked` | | Text of the answer for senders over quota |
 | `policyd_fail_action` | `DUNNO` | Answer on internal errors: `DUNNO` or `DEFER_IF_PERMIT` |

@@ -23,7 +23,9 @@ policyd_log_level: INFO
 policyd_syslog: true
 
 # Listen addresses of the systemd socket unit: `host:port` or an absolute unix socket path. For a unix socket that
-# only Postfix may use: ['/var/spool/postfix/private/policyd-rate-guard'], Postfix: unix:private/policyd-rate-guard
+# only Postfix may use: ['/var/spool/postfix/policyd-rate-guard/policyd.sock'], Postfix:
+# unix:policyd-rate-guard/policyd.sock. Only in a directory that nobody but root can write to (systemd creates a
+# missing one as root 0755), never in Postfix's private/: systemd's chown of the socket follows a symlink.
 policyd_listen:
   - 127.0.0.1:10033
 policyd_socket_user: postfix
