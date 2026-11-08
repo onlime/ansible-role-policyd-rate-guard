@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      app_ref:
+        description: "PolicydRateGuard ref to test against (default: the role's policyd_version)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - name: ansible-lint
+        run: uvx --with ansible-core ansible-lint --profile production
+
+  molecule:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [default, upgrade]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the upgrade scenario extracts role v0.5.3 from the history
+      - name: PolicydRateGuard version
+        id: app
+        env:
+          APP_REF: ${{ inputs.app_ref }}
+        run: |
+          ref="${APP_REF:-$(sed -n "s/^policyd_version: //p" defaults/main.yml)}"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: onlime/policyd-rate-guard
+          ref: ${{ steps.app.outputs.ref }}
+          path: policyd-rate-guard
+          fetch-depth: 0 # the upgrade scenario installs v0.7.4 first
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      - name: Molecule
+        env:
+          POLICYD_REPO_PATH: ${{ github.workspace }}/policyd-rate-guard
+          POLICYD_VERSION: ${{ steps.app.outputs.ref }}
+          SCENARIO: ${{ matrix.scenario }}
+          PY_COLORS: '1'
+          ANSIBLE_FORCE_COLOR: '1'
+        run: uvx --with ansible-core --with 'molecule-plugins[docker]' molecule test -s "$SCENARIO"

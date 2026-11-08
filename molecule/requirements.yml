@@ -1,0 +1,4 @@
+---
+collections:
+  - name: ansible.mysql
+    version: '>=5.0.0'

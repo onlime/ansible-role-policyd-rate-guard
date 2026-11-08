@@ -1,0 +1,50 @@
+---
+# Debian 13 with Postfix and Percona Server 8.4 (as on our MX hosts); root logs in through ~/.my.cnf
+- name: Prepare
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, gnupg, git, postfix, python3-pymysql, logrotate]
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Install percona-release
+      ansible.builtin.apt:
+        deb: https://repo.percona.com/apt/percona-release_latest.generic_all.deb
+
+    - name: Enable the Percona Server 8.4 repository
+      ansible.builtin.command:
+        cmd: percona-release setup -y ps-84-lts
+        creates: /etc/apt/sources.list.d/percona-ps-84-lts-release.list
+
+    - name: Install Percona Server 8.4
+      ansible.builtin.apt:
+        name: percona-server-server
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Start MySQL
+      ansible.builtin.systemd_service:
+        name: mysql
+        state: started
+        enabled: true
+
+    - name: Root login through the unix socket
+      ansible.builtin.copy:
+        dest: /root/.my.cnf
+        content: |
+          [client]
+          user = root
+          socket = /run/mysqld/mysqld.sock
+        mode: '0600'
+
+    # The app repo is mounted from the host (owned by another uid)
+    - name: Trust the mounted app repository  # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: git config --system --add safe.directory /srv/policyd-rate-guard
+      changed_when: true
+      when: lookup('env', 'POLICYD_REPO_PATH') | length > 0

@@ -1,0 +1,46 @@
+---
+# Fresh install on Debian 13 with Percona Server 8.4.
+# The app comes from GitHub (POLICYD_VERSION, default: the role's policyd_version), or from a local checkout:
+#   POLICYD_REPO_PATH=../policyd-rate-guard POLICYD_VERSION=develop molecule test
+dependency:
+  name: galaxy
+  options:
+    requirements-file: molecule/requirements.yml
+driver:
+  name: docker
+platforms:
+  - name: policyd-debian13
+    image: geerlingguy/docker-debian13-ansible:latest
+    pre_build_image: true
+    command: ''
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ${POLICYD_REPO_PATH:-/dev/null}:/srv/policyd-rate-guard:ro
+provisioner:
+  name: ansible
+  playbooks:
+    prepare: ../shared/prepare.yml
+    verify: ../shared/verify.yml
+  inventory:
+    group_vars:
+      all:
+        policyd_repo: "{{ lookup('env', 'POLICYD_REPO_PATH') | ternary('/srv/policyd-rate-guard', 'https://github.com/onlime/policyd-rate-guard.git') }}"
+        policyd_version: "{{ lookup('env', 'POLICYD_VERSION') | default('v1.0.0', true) }}"
+        # special characters, to test the quoting in the env file and the URL-encoding in yoyo.ini
+        policyd_mysql_pass: 'p@ss:w/rd%1"x#y\z'
+        policyd_yoyo_mysql_pass: 'yoyo?#&%pass'
+        policyd_webhook_secret: ''
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

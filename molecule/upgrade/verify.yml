@@ -1,0 +1,42 @@
+---
+- name: Common checks
+  ansible.builtin.import_playbook: ../shared/verify.yml
+
+- name: Upgrade checks
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Stat the legacy backup
+      ansible.builtin.stat:
+        path: /opt/policyd-rate-guard.pre-1.0
+      register: verify_backup
+
+    - name: The legacy installation was moved aside and locked down
+      ansible.builtin.assert:
+        that:
+          - verify_backup.stat.isdir
+          - verify_backup.stat.pw_name == 'root'
+          - verify_backup.stat.mode == '0700'
+        quiet: true
+
+    - name: Data of the legacy daemon is still there
+      ansible.builtin.command:
+        cmd: mysql -N -D policyd-rate-guard -e "SELECT rcpt_total FROM ratelimits WHERE sender = 'legacy@example.com'"
+      register: verify_legacy_data
+      changed_when: false
+      failed_when: verify_legacy_data.stdout | int != 3
+
+    - name: The daemon's database user may only change data
+      ansible.builtin.command:
+        cmd: mysql -N -e "SHOW GRANTS FOR 'policyd'@'localhost'"
+      register: verify_grants
+      changed_when: false
+      failed_when: >-
+        'GRANT SELECT, INSERT, UPDATE, DELETE ON `policyd-rate-guard`.*' not in verify_grants.stdout
+        or 'ALL PRIVILEGES' in verify_grants.stdout
+
+    - name: The log directory belongs to the new user now
+      ansible.builtin.stat:
+        path: /var/log/policyd-rate-guard
+      register: verify_logdir
+      failed_when: verify_logdir.stat.pw_name != 'policyd-rate-guard'
