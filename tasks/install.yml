@@ -72,43 +72,38 @@
       ('version = ' ~ ansible_facts['python']['version']['major'] ~ '.' ~ ansible_facts['python']['version']['minor'] ~ '.')
       not in (policyd_pyvenv_cfg.content | b64decode)
 
-# umask 022: with root's umask (077 on some hosts) the service user couldn't read the venv
-- name: Create the venv
-  ansible.builtin.command:
-    argv: [/bin/sh, -c, 'umask 022 && exec "$@"', sh, /usr/bin/python3, -m, venv, '{{ policyd_venv_path }}']
-    creates: '{{ policyd_venv_path }}/bin/python'
-
 - name: Read the commit the venv was installed from
   ansible.builtin.slurp:
     src: '{{ policyd_venv_path }}/.installed-commit'
   register: policyd_installed_commit
   failed_when: false
 
-# Dependencies as binary wheels only, so no third-party code is built or run at install time; the app itself is
-# built from the checkout (declarative pyproject.toml). pip reinstalls a local project every time, hence only for a
-# new commit (or a new venv).
+# pip reinstalls a local project every time, so only for a new commit (or a new venv)
+- name: Note whether the checkout must be installed
+  ansible.builtin.set_fact:
+    policyd_install_needed: >-
+      {{ policyd_git.after is defined
+         and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim) }}
+
 # setuptools builds in the checkout and keeps files of earlier builds in build/, e.g. removed modules
 - name: Remove the build directory of an earlier install
   ansible.builtin.file:
     path: '{{ policyd_install_path }}/build'
     state: absent
-  when: policyd_git.after is defined and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim)
+  when: policyd_install_needed | bool
 
+# Creates the venv if needed. Dependencies as binary wheels only, so no third-party code is built or run at install
+# time; the app itself is built from the checkout (declarative pyproject.toml). umask: root's may be 077, and the
+# service user must be able to read the venv.
 - name: Install PolicydRateGuard and its dependencies
-  ansible.builtin.command:
-    argv:
-      - /bin/sh
-      - -c
-      - umask 022 && exec "$@"
-      - sh
-      - '{{ policyd_venv_path }}/bin/pip'
-      - install
-      - --disable-pip-version-check
-      - --no-input
-      - '--only-binary=:all:'
-      - '{{ policyd_install_path }}'
-  when: policyd_git.after is defined and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim)
-  changed_when: true
+  ansible.builtin.pip:
+    name: '{{ policyd_install_path }}'
+    virtualenv: '{{ policyd_venv_path }}'
+    virtualenv_command: /usr/bin/python3 -m venv
+    extra_args: '--only-binary=:all: --disable-pip-version-check --no-input'
+    umask: '0022'
+  when: policyd_install_needed | bool
+  changed_when: true  # pip compares `pip freeze`, which doesn't change for a new commit of the same version
   # The commit is only recorded after the restart: if the run fails in between, the next run installs and restarts
   notify: [Restart policyd service, Remember the installed commit]
 
