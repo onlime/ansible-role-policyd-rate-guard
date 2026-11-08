@@ -34,6 +34,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - Migrations are only applied when some are pending, so the role reports changes correctly.
 - The daemon is only restarted when code, dependencies, configuration or units change; logrotate no longer restarts it.
 - Works in check mode.
+- The preflight checks run with the role's tags instead of `always`: a site-wide playbook run limited to other tags (e.g. a Postfix change) doesn't include them.
 - The cleanup is retried for up to an hour when resetting the counters fails (e.g. a row locked at midnight); before, senders stayed blocked for the day.
 - A restart that a failed run left out, e.g. after a password rotation, is caught up on the next run: the service is restarted whenever the env file is newer than the running service.
 - Molecule tests (a fresh install on Debian 13 with Percona Server 8.4, and the refusal of a 0.x installation) and GitHub Actions (ansible-lint, Molecule).

@@ -1,8 +1,10 @@
 ---
 # Install PolicydRateGuard, https://github.com/onlime/policyd-rate-guard
+# With every tag of the role's tasks, not `always`: a run of a site-wide playbook limited to other tags doesn't
+# include the role's checks (or its refusal of an installation it didn't make)
 - name: Preflight checks
   ansible.builtin.import_tasks: preflight.yml
-  tags: [always]
+  tags: [quick-deploy, policyd-config, policyd-mysql-users, mysql-users, policyd-logrotate]
 
 - name: Packages and system user
   ansible.builtin.import_tasks: system.yml
