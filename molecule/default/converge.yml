@@ -2,5 +2,8 @@
 - name: Converge
   hosts: all
   gather_facts: true
+  vars:
+    # every module runs with umask 077, as root on hosts with a restrictive login.defs (see prepare.yml)
+    ansible_python_interpreter: /usr/local/bin/python3-umask077
   roles:
     - role: onlime.policyd_rate_guard

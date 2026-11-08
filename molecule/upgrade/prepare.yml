@@ -44,16 +44,20 @@
         port: 10033
         timeout: 30
 
+    # In one write: 0.x reads a request with a single recv() and answers DUNNO to a partial one
     - name: Send a request to the legacy daemon
-      ansible.builtin.shell:
-        executable: /bin/bash
-        cmd: |
-          set -euo pipefail
-          exec 3<>/dev/tcp/127.0.0.1/10033
-          printf '%s\n' request=smtpd_access_policy protocol_state=DATA queue_id=LEGACY1 sender=a@example.com \
-            recipient_count=3 client_address=192.0.2.10 client_name=client.example.net sasl_method=PLAIN \
-            sasl_username=legacy@example.com '' >&3
-          timeout 10 head -n 1 <&3
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import socket
+            request = ('request=smtpd_access_policy\nprotocol_state=DATA\nqueue_id=LEGACY1\nsender=a@example.com\n'
+                       'recipient_count=3\nclient_address=192.0.2.10\nclient_name=client.example.net\n'
+                       'sasl_method=PLAIN\nsasl_username=legacy@example.com\n\n')
+            with socket.create_connection(('127.0.0.1', 10033), timeout=10) as conn:
+                conn.sendall(request.encode())
+                print(conn.recv(100).decode().strip())
       register: legacy_reply
       changed_when: false
       failed_when: legacy_reply.stdout != 'action=OK'

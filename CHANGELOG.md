@@ -19,8 +19,8 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - New required variable `policyd_yoyo_mysql_pass`.
 - `policyd_message_retention` defaults to `365` (was `0`, keep forever).
 - Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket.
-- Renamed handler and tasks; `quick-deploy` now also covers migrations and units.
-- `policyd_log_path` is removed: the log is always in `/var/log/<service name>/`, which the unit creates (`LogsDirectory=`) and which is the only place the sandboxed daemon may write to. `policyd_log_file` must stay in that directory; logrotate now creates the files with the service group instead of `adm`.
+- The handlers `Apply yoyo migrations` and `Reload systemd daemon` are gone (migrations and the reload are regular tasks now), and tasks were renamed; `quick-deploy` now also covers migrations and units.
+- `policyd_log_path` is removed: the log is always in `/var/log/<service name>/`, which the unit creates (`LogsDirectory=`) and which is the only place the sandboxed daemon may write to. `policyd_log_file` must stay in that directory. logrotate creates the files with the service user and group, mode 0640 (0.x: 0644 `postfix`), and no longer restarts the daemon.
 - `policyd_webhook_use_jwt` is removed: PolicydRateGuard 1.0 always authenticates the webhook with a JWT in the `Authorization` header (the simple token is gone). The role fails early if it's still set to `false`.
 
 **Improved:**
@@ -34,6 +34,7 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 
 **Fixed:**
 
+- 0.x copied the units as a directory with mode `0644`, which also set `/etc/systemd/system` itself to `0644` (not traversable for other users); 1.0 restores `0755`.
 - Since v0.5.2 every run after the first failed at the git task: git refuses a repository owned by another user (`postfix`) when run as root ("dubious ownership").
 - The first run on a fresh host failed: the first migration ran before the database users were created. The migration user is now created first, the other users and their grants (which may refer to tables) after the migrations.
 - Passwords with special characters broke `yoyo.ini` (`%` and URL-reserved characters weren't escaped); values in the env file are quoted.

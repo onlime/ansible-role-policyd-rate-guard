@@ -40,3 +40,13 @@
         path: /var/log/policyd-rate-guard
       register: verify_logdir
       failed_when: verify_logdir.stat.pw_name != 'policyd-rate-guard'
+
+    - name: Stat /etc/systemd/system
+      ansible.builtin.stat:
+        path: /etc/systemd/system
+      register: verify_systemd_dir
+
+    - name: Role 0.x left /etc/systemd/system at 0644, 1.0 restores 0755
+      ansible.builtin.assert:
+        that: verify_systemd_dir.stat.mode == '0755'
+        quiet: true

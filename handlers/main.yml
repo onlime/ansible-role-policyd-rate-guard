@@ -5,3 +5,12 @@
     state: restarted
   # in a dry run on a new host the unit doesn't exist yet
   when: not policyd_units_pending | default(false) | bool
+
+# After the restart (handlers run in this order), see the install task
+- name: Remember the installed commit
+  ansible.builtin.copy:
+    content: "{{ policyd_git.after }}\n"
+    dest: '{{ policyd_venv_path }}/.installed-commit'
+    owner: root
+    group: root
+    mode: '0644'

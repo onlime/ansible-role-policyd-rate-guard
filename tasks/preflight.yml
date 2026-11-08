@@ -16,10 +16,12 @@
       - policyd_mysql_user != policyd_yoyo_mysql_user
       - policyd_fail_action in ['DUNNO', 'DEFER_IF_PERMIT']
       - policyd_listen is not string and policyd_listen | length > 0
+      - policyd_log_file.startswith('/var/log/' ~ policyd_service_name ~ '/')
       - not policyd_webhook_enabled or (policyd_webhook_url | length > 0 and policyd_webhook_secret | length > 0)
     fail_msg: >-
       Set policyd_mysql_pass and policyd_yoyo_mysql_pass (two different database users since role 1.0),
-      a valid policyd_fail_action, policyd_listen (a list), and the webhook URL and secret when the webhook is enabled.
+      a valid policyd_fail_action, policyd_listen (a list), policyd_log_file in /var/log/<policyd_service_name>/,
+      and the webhook URL and secret when the webhook is enabled.
     quiet: true
 
 # PolicydRateGuard 1.0 always authenticates the webhook with a JWT (Authorization: Bearer)

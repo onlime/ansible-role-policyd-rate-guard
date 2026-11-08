@@ -4,6 +4,15 @@
   hosts: all
   gather_facts: true
   tasks:
+    - name: A Python wrapper with umask 077 for the default scenario's converge
+      ansible.builtin.copy:
+        dest: /usr/local/bin/python3-umask077
+        content: |
+          #!/bin/sh
+          umask 077
+          exec /usr/bin/python3 "$@"
+        mode: '0755'
+
     - name: Install base packages
       ansible.builtin.apt:
         name: [ca-certificates, curl, gnupg, git, postfix, python3-pymysql, logrotate]

@@ -28,3 +28,20 @@
     group: root
     mode: '0644'
   tags: [policyd-logrotate]
+
+# Every run, as the service user and before any restart: an unreadable venv, or a configuration that a new release
+# rejects (the template only validates a changed file), would otherwise only show when the service fails to start
+- name: Check the installation and the configuration as the service user
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - -u
+      - '{{ policyd_user }}'
+      - --
+      - '{{ policyd_venv_path }}/bin/policyd-rate-guard'
+      - --env-file
+      - '{{ policyd_env_file }}'
+      - check
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [policyd-config, quick-deploy, policyd-mysql-users, mysql-users]

@@ -72,9 +72,10 @@
       ('version = ' ~ ansible_facts['python']['version']['major'] ~ '.' ~ ansible_facts['python']['version']['minor'] ~ '.')
       not in (policyd_pyvenv_cfg.content | b64decode)
 
+# umask 022: with root's umask (077 on some hosts) the service user couldn't read the venv
 - name: Create the venv
   ansible.builtin.command:
-    cmd: /usr/bin/python3 -m venv {{ policyd_venv_path | quote }}
+    argv: [/bin/sh, -c, 'umask 022 && exec "$@"', sh, /usr/bin/python3, -m, venv, '{{ policyd_venv_path }}']
     creates: '{{ policyd_venv_path }}/bin/python'
 
 - name: Read the commit the venv was installed from
@@ -96,6 +97,10 @@
 - name: Install PolicydRateGuard and its dependencies
   ansible.builtin.command:
     argv:
+      - /bin/sh
+      - -c
+      - umask 022 && exec "$@"
+      - sh
       - '{{ policyd_venv_path }}/bin/pip'
       - install
       - --disable-pip-version-check
@@ -104,16 +109,8 @@
       - '{{ policyd_install_path }}'
   when: policyd_git.after is defined and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim)
   changed_when: true
-  notify: Restart policyd service
-
-- name: Remember the installed commit
-  ansible.builtin.copy:
-    content: "{{ policyd_git.after }}\n"
-    dest: '{{ policyd_venv_path }}/.installed-commit'
-    owner: root
-    group: root
-    mode: '0644'
-  when: policyd_git.after is defined
+  # The commit is only recorded after the restart: if the run fails in between, the next run installs and restarts
+  notify: [Restart policyd service, Remember the installed commit]
 
 - name: Remove group/world write permissions and foreign ownership in the install directory
   ansible.builtin.shell:

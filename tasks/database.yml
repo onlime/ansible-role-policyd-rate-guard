@@ -38,7 +38,7 @@
     group: root
     mode: '0600'
   diff: false  # contains the migration user's password
-  tags: [policyd-mysql-users]
+  tags: [policyd-mysql-users, mysql-users]
 
 - name: List pending database migrations
   ansible.builtin.command:
