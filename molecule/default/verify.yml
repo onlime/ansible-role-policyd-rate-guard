@@ -1,0 +1,49 @@
+---
+- name: Common checks
+  ansible.builtin.import_playbook: ../shared/verify.yml
+
+- name: Fresh install checks
+  hosts: all
+  gather_facts: false
+  vars:
+    unix_socket: /var/spool/postfix/private/policyd-rate-guard
+  tasks:
+    - name: Stat the unix socket
+      ansible.builtin.stat:
+        path: '{{ unix_socket }}'
+      register: verify_unix_socket
+
+    - name: The unix socket belongs to postfix, mode 0600
+      ansible.builtin.assert:
+        that:
+          - verify_unix_socket.stat.issock
+          - verify_unix_socket.stat.pw_name == 'postfix'
+          - verify_unix_socket.stat.mode == '0600'
+        quiet: true
+
+    - name: Answer a policy request on the unix socket (as postfix)
+      ansible.builtin.command:
+        argv:
+          - runuser
+          - -u
+          - postfix
+          - --
+          - python3
+          - -c
+          - |
+            import socket
+            s = socket.socket(socket.AF_UNIX)
+            s.connect('{{ unix_socket }}')
+            s.sendall(b'request=smtpd_access_policy\nprotocol_state=DATA\nqueue_id=MOLECULEUNIX\n'
+                      b'recipient_count=1\nsasl_username=molecule-unix@example.com\n\n')
+            print(s.recv(100).decode().strip())
+      register: verify_unix_request
+      changed_when: false
+      failed_when: verify_unix_request.stdout != 'action=OK'
+
+    - name: The webhook is configured
+      ansible.builtin.command:
+        cmd: grep -c -E '^WEBHOOK_(ENABLED|URL|SECRET)=' /etc/policyd-rate-guard/policyd-rate-guard.env
+      register: verify_webhook
+      changed_when: false
+      failed_when: verify_webhook.stdout | trim != '3'

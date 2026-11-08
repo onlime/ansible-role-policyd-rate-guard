@@ -9,8 +9,8 @@ Type=oneshot
 User={{ policyd_user }}
 Group={{ policyd_group }}
 Environment=POLICYD_ENV_FILE={{ policyd_env_file }}
-ExecStart={{ policyd_venv_path }}/bin/python -m policyd_rate_guard cleanup
-LogsDirectory={{ policyd_log_path | regex_replace('^/var/log/', '') }}
+ExecStart={{ policyd_venv_path }}/bin/policyd-rate-guard cleanup
+LogsDirectory={{ policyd_service_name }}
 LogsDirectoryMode=0750
 UMask=0027
 

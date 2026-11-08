@@ -20,12 +20,13 @@ For [PolicydRateGuard v1.0.0](https://github.com/onlime/policyd-rate-guard/relea
 - `policyd_message_retention` defaults to `365` (was `0`, keep forever).
 - Systemd units are templated by the role (socket, service, cleanup service and timer) instead of copied from the checkout; `policyd_listen` configures the socket.
 - Renamed handler and tasks; `quick-deploy` now also covers migrations and units.
+- `policyd_log_path` is removed: the log is always in `/var/log/<service name>/`, which the unit creates (`LogsDirectory=`) and which is the only place the sandboxed daemon may write to. `policyd_log_file` must stay in that directory; logrotate now creates the files with the service group instead of `adm`.
 - `policyd_webhook_use_jwt` is removed: PolicydRateGuard 1.0 always authenticates the webhook with a JWT in the `Authorization` header (the simple token is gone). The role fails early if it's still set to `false`.
 
 **Improved:**
 
 - The database users' passwords are only changed with `policyd_rotate_passwords=true`. Before, the user task reported a change on every run (`caching_sha2_password` hashes can't be compared), reset the passwords and restarted the daemon.
-- The env file is validated with `python -m policyd_rate_guard check` (configuration and database connection) before it replaces the old one.
+- The env file is validated with `policyd-rate-guard check` (configuration and database connection) before it replaces the old one.
 - The venv is recreated when Python's minor version changes (Debian release upgrade).
 - Migrations are only applied when some are pending, so the role reports changes correctly.
 - The daemon is only restarted when code, dependencies, configuration or units change; logrotate no longer restarts it.

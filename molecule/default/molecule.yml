@@ -22,7 +22,7 @@ provisioner:
   name: ansible
   playbooks:
     prepare: ../shared/prepare.yml
-    verify: ../shared/verify.yml
+    verify: verify.yml
   inventory:
     group_vars:
       all:
@@ -31,7 +31,14 @@ provisioner:
         # special characters, to test the quoting in the env file and the URL-encoding in yoyo.ini
         policyd_mysql_pass: 'p@ss:w/rd%1"x#y\z'
         policyd_yoyo_mysql_pass: 'yoyo?#&%pass'
-        policyd_webhook_secret: ''
+        # as in production: the JWT webhook (validated by `check`; nothing calls it below the quota)
+        policyd_webhook_enabled: true
+        policyd_webhook_url: 'https://airpane.example/api/policyd/{sender}'
+        policyd_webhook_secret: Wk9YZXliVlVtY2pQcFlFUm9KY1U1ZkFFaUpWTk1FU20=
+        # a unix socket for Postfix in addition to TCP
+        policyd_listen:
+          - 127.0.0.1:10033
+          - /var/spool/postfix/private/policyd-rate-guard
 verifier:
   name: ansible
 scenario:
@@ -40,6 +47,7 @@ scenario:
     - destroy
     - create
     - prepare
+    - check
     - converge
     - idempotence
     - verify

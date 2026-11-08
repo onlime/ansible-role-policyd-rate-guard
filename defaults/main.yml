@@ -14,9 +14,10 @@ policyd_venv_path: '{{ policyd_install_path }}/venv'
 # Configuration, readable by root and the service user only
 policyd_config_path: /etc/policyd-rate-guard
 policyd_env_file: '{{ policyd_config_path }}/policyd-rate-guard.env'
-policyd_log_path: /var/log/policyd-rate-guard
-policyd_log_file: '{{ policyd_log_path }}/policyd-rate-guard.log'
 policyd_log_rotate: 365
+# Keep it in /var/log/<service name>: the unit's LogsDirectory= creates that directory, and ProtectSystem=strict
+# lets the daemon write nowhere else
+policyd_log_file: /var/log/{{ policyd_service_name }}/{{ policyd_service_name }}.log
 policyd_log_level: INFO
 # Also log to syslog (mail.log)
 policyd_syslog: true
@@ -63,10 +64,6 @@ policyd_mysql_users:
     password: '{{ policyd_mysql_pass }}'
     privs:
       - '{{ policyd_mysql_dbname }}.*:SELECT,INSERT,UPDATE,DELETE'
-  - name: '{{ policyd_yoyo_mysql_user }}'
-    password: '{{ policyd_yoyo_mysql_pass }}'
-    privs:
-      - '{{ policyd_mysql_dbname }}.*:ALL'
 # Passwords of existing users are only changed with -e policyd_rotate_passwords=true (the module can't compare
 # caching_sha2_password hashes, so it would otherwise reset them, and flush the auth cache, on every run)
 policyd_rotate_passwords: false

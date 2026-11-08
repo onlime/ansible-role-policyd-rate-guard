@@ -7,9 +7,11 @@
     owner: root
     group: '{{ policyd_group }}'
     mode: '0640'
-    validate: '{{ policyd_venv_path }}/bin/python -m policyd_rate_guard --env-file %s check'
+    validate: '{{ policyd_venv_path }}/bin/policyd-rate-guard --env-file %s check'
+  diff: false  # contains the database password, the webhook secret and the Sentry DSN
   notify: Restart policyd service
-  tags: [policyd-config]
+  # also with the database users, so a password rotation by tag reaches the daemon too
+  tags: [policyd-config, policyd-mysql-users, mysql-users]
 
 # Role 0.x kept them world-readable in the code directory (in a legacy backup they're root-only now)
 - name: Remove configuration files from the code directory

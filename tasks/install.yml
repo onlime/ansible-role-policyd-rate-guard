@@ -86,6 +86,13 @@
 # Dependencies as binary wheels only, so no third-party code is built or run at install time; the app itself is
 # built from the checkout (declarative pyproject.toml). pip reinstalls a local project every time, hence only for a
 # new commit (or a new venv).
+# setuptools builds in the checkout and keeps files of earlier builds in build/, e.g. removed modules
+- name: Remove the build directory of an earlier install
+  ansible.builtin.file:
+    path: '{{ policyd_install_path }}/build'
+    state: absent
+  when: policyd_git.after is defined and policyd_git.after != (policyd_installed_commit.content | default('') | b64decode | trim)
+
 - name: Install PolicydRateGuard and its dependencies
   ansible.builtin.command:
     argv:
@@ -117,12 +124,3 @@
   register: policyd_fix_permissions
   changed_when: policyd_fix_permissions.stdout | length > 0
   when: not ansible_check_mode
-
-- name: Check that the checkout is unmodified  # noqa: command-instead-of-module (the git module has no status)
-  ansible.builtin.command:
-    cmd: git -C {{ policyd_install_path | quote }} status --porcelain --untracked-files=no
-  register: policyd_git_status
-  changed_when: false
-  check_mode: false
-  failed_when: policyd_git_status.rc != 0 or policyd_git_status.stdout | length > 0
-  when: not (ansible_check_mode and policyd_legacy_install | default(false))

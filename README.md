@@ -60,7 +60,7 @@ To change the database passwords, update them in the vault and run once with `-e
 | `policyd_repo` | GitHub | Git repository |
 | `policyd_mysql_pass` | `vault_policyd_mysql_pass` | Password of the daemon's database user `policyd_mysql_user` (`policyd`) |
 | `policyd_yoyo_mysql_pass` | `vault_policyd_yoyo_mysql_pass` | Password of the migration user `policyd_yoyo_mysql_user` (`policyd-rate-guard`) |
-| `policyd_mysql_users` | both users | Users and grants, extend it for read-only users etc. |
+| `policyd_mysql_users` | the daemon's user | Users and grants, extend it for read-only users etc. (the migration user is managed separately) |
 | `policyd_mysql_dbname` | `policyd-rate-guard` | Database name |
 | `policyd_mysql_unix_socket` | `/run/mysqld/mysqld.sock` | Socket the daemon and the migrations connect through (empty: TCP `localhost:3306`) |
 | `policyd_mysql_login_unix_socket` | | Socket for the `mysql_db`/`mysql_user` tasks |
@@ -71,7 +71,7 @@ To change the database passwords, update them in the vault and run once with `-e
 | `policyd_action_text_blocked` | | Text of the answer for senders over quota |
 | `policyd_fail_action` | `DUNNO` | Answer on internal errors: `DUNNO` or `DEFER_IF_PERMIT` |
 | `policyd_message_retention` | `365` | Days to keep rows in `messages` (`0`: forever) |
-| `policyd_log_level`, `policyd_log_file`, `policyd_log_rotate`, `policyd_syslog` | `INFO`, `/var/log/policyd-rate-guard/policyd-rate-guard.log`, `365`, `true` | Logging |
+| `policyd_log_level`, `policyd_log_rotate`, `policyd_syslog` | `INFO`, `365`, `true` | Logging to `/var/log/policyd-rate-guard/policyd-rate-guard.log` (rotated daily) and syslog |
 | `policyd_sentry_dsn`, `policyd_sentry_environment` | , `prod` | Sentry error reporting |
 | `policyd_webhook_enabled`, `policyd_webhook_url`, `policyd_webhook_secret` | `false`, , `vault_policyd_webhook_secret` | Webhook when a sender reaches the quota, authenticated with a JWT (base64 secret) |
 | `policyd_extra_env` | `{}` | More environment variables, e.g. `{DB_POOL_MAXCONNECTIONS: 20}` |

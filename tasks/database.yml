@@ -37,6 +37,7 @@
     owner: root
     group: root
     mode: '0600'
+  diff: false  # contains the migration user's password
   tags: [policyd-mysql-users]
 
 - name: List pending database migrations
@@ -46,13 +47,15 @@
   changed_when: false
   check_mode: false
   failed_when: policyd_migrations.rc != 0 and not ansible_check_mode
+  # in a dry run on a 0.x host, this would still be the old, untrusted venv (it's only moved aside for real)
+  when: not (ansible_check_mode and policyd_legacy_install | default(false))
   tags: [quick-deploy]
 
 # Runs before the new code is started; migrations must work with the running (old) code too
 - name: Apply database migrations
   ansible.builtin.command:
     argv: ['{{ policyd_venv_path }}/bin/yoyo', apply, --batch, --config, '{{ policyd_config_path }}/yoyo.ini']
-  when: policyd_migrations.stdout is regex('(?m)^U\s')
+  when: policyd_migrations.stdout | default('') is regex('(?m)^U\s')
   changed_when: true
   tags: [quick-deploy]
 

@@ -4,7 +4,6 @@
     that:
       - ansible_facts['distribution'] == 'Debian'
       - ansible_facts['distribution_major_version'] is version('13', '>=')
-      - ansible_facts['python']['version']['major'] == 3
     fail_msg: PolicydRateGuard 1.x needs Debian 13 (trixie) or later
     quiet: true
 
@@ -16,21 +15,22 @@
       - policyd_yoyo_mysql_pass | length > 0
       - policyd_mysql_user != policyd_yoyo_mysql_user
       - policyd_fail_action in ['DUNNO', 'DEFER_IF_PERMIT']
-      - policyd_listen | length > 0
+      - policyd_listen is not string and policyd_listen | length > 0
       - not policyd_webhook_enabled or (policyd_webhook_url | length > 0 and policyd_webhook_secret | length > 0)
     fail_msg: >-
       Set policyd_mysql_pass and policyd_yoyo_mysql_pass (two different database users since role 1.0),
-      a valid policyd_fail_action, policyd_listen, and the webhook URL and secret when the webhook is enabled.
+      a valid policyd_fail_action, policyd_listen (a list), and the webhook URL and secret when the webhook is enabled.
     quiet: true
-  no_log: true
 
 # PolicydRateGuard 1.0 always authenticates the webhook with a JWT (Authorization: Bearer)
 - name: Assert the webhook doesn't expect the removed simple token
   ansible.builtin.assert:
-    that: policyd_webhook_use_jwt | default(true) | bool
+    that:
+      - policyd_webhook_use_jwt | default(true) | bool
+      - "'{token}' not in policyd_webhook_url"
     fail_msg: >-
-      policyd_webhook_use_jwt=false: the simple token was removed in PolicydRateGuard 1.0, the webhook always sends a
-      JWT in the Authorization header. Switch the receiving side to JWT and remove the variable.
+      The simple token (policyd_webhook_use_jwt=false, {token} in policyd_webhook_url) was removed in PolicydRateGuard
+      1.0: the webhook always sends a JWT in the Authorization header. Switch the receiving side to JWT and remove both.
     quiet: true
 
 - name: Check the existing installation

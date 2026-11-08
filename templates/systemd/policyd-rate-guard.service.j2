@@ -11,12 +11,12 @@ Type=notify
 User={{ policyd_user }}
 Group={{ policyd_group }}
 Environment=POLICYD_ENV_FILE={{ policyd_env_file }}
-ExecStart={{ policyd_venv_path }}/bin/python -m policyd_rate_guard serve --require-socket-activation
+ExecStart={{ policyd_venv_path }}/bin/policyd-rate-guard serve --require-socket-activation
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=20s
 LimitNOFILE=8192
-LogsDirectory={{ policyd_log_path | regex_replace('^/var/log/', '') }}
+LogsDirectory={{ policyd_service_name }}
 LogsDirectoryMode=0750
 UMask=0027
 

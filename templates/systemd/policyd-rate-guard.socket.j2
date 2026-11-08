@@ -2,10 +2,6 @@
 [Unit]
 Description=PolicydRateGuard policy service socket
 Documentation=https://github.com/onlime/policyd-rate-guard
-PartOf={{ policyd_service_name }}.service
-{% if policyd_listen | select('match', '^/') | list %}
-RequiresMountsFor=/var/spool/postfix
-{% endif %}
 
 [Socket]
 {% for address in policyd_listen %}

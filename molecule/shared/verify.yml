@@ -71,6 +71,41 @@
       changed_when: false
       failed_when: verify_migrations.stdout is regex('(?m)^U\s') or verify_migrations.rc != 0
 
+    - name: Read when the socket was started
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.socket
+      register: verify_socket_before
+
+    - name: Restart the service, as a deploy does
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.service
+        state: restarted
+
+    - name: Read when the socket was started, after the restart
+      ansible.builtin.systemd_service:
+        name: policyd-rate-guard.socket
+      register: verify_socket_after
+
+    # Otherwise Postfix gets refused connections during each restart and falls back to its default_action (DUNNO)
+    - name: The socket stayed open across the restart
+      ansible.builtin.assert:
+        that: verify_socket_after.status.ActiveEnterTimestampMonotonic == verify_socket_before.status.ActiveEnterTimestampMonotonic
+        quiet: true
+
+    - name: Read the installed commit and the checkout's commit
+      ansible.builtin.command:
+        cmd: '{{ item }}'
+      loop:
+        - cat {{ install_path }}/venv/.installed-commit
+        - git -C {{ install_path }} rev-parse HEAD
+      register: verify_commits
+      changed_when: false
+
+    - name: The venv has the checked-out commit installed
+      ansible.builtin.assert:
+        that: verify_commits.results[0].stdout == verify_commits.results[1].stdout
+        quiet: true
+
     - name: Answer a policy request (DATA stage, Postfix attribute order)
       ansible.builtin.shell:
         executable: /bin/bash
@@ -104,6 +139,38 @@
       changed_when: false
       failed_when: verify_log.stdout != 'MOLECULE1:'
 
+    - name: Rotate the log
+      ansible.builtin.command:
+        cmd: logrotate --force /etc/logrotate.d/policyd-rate-guard
+      changed_when: true
+
+    - name: Answer a policy request after the rotation
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          exec 3<>/dev/tcp/127.0.0.1/10033
+          printf '%s\n' request=smtpd_access_policy protocol_state=DATA queue_id=MOLECULE2 recipient_count=1 \
+            sasl_username={{ sender }} '' >&3
+          timeout 10 head -n 1 <&3
+      register: verify_policy_rotated
+      changed_when: false
+      failed_when: verify_policy_rotated.stdout != 'action=OK'
+
+    - name: Stat the new log file
+      ansible.builtin.stat:
+        path: /var/log/policyd-rate-guard/policyd-rate-guard.log
+      register: verify_new_log
+
+    - name: The daemon writes to the new log file (owned by the service, mode 0640)
+      ansible.builtin.command:
+        cmd: grep -c MOLECULE2 /var/log/policyd-rate-guard/policyd-rate-guard.log
+      register: verify_rotated_log
+      changed_when: false
+      failed_when: >-
+        verify_rotated_log.stdout | int != 1 or verify_new_log.stat.pw_name != 'policyd-rate-guard'
+        or verify_new_log.stat.gr_name != 'policyd-rate-guard' or verify_new_log.stat.mode != '0640'
+
     - name: The cleanup job runs
       ansible.builtin.systemd_service:
         name: policyd-rate-guard-cleanup.service
@@ -127,3 +194,8 @@
     - name: Show the sandbox score
       ansible.builtin.debug:
         msg: '{{ verify_security.stdout }}'
+
+    - name: The sandbox score stays low (1.1 with the shipped hardening)
+      ansible.builtin.assert:
+        that: (verify_security.stdout | regex_search('([0-9]+[.][0-9]+) [A-Z]+', '\\1') | first | float) < 2.0
+        quiet: true
