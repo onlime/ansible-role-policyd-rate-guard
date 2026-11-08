@@ -51,10 +51,11 @@
           socket = /run/mysqld/mysqld.sock
         mode: '0600'
 
-    # The app repo is mounted from the host (owned by another uid)
+    # The app repo is mounted from the host, owned by another uid on Linux (CI). The role clones from it, and git checks
+    # the .git directory then, not the work tree (macOS' Docker shows the files as root's, so it passes there anyway)
     - name: Trust the mounted app repository  # noqa: command-instead-of-module
       ansible.builtin.command:
-        cmd: git config --system --add safe.directory /srv/policyd-rate-guard
+        cmd: git config --system --add safe.directory /srv/policyd-rate-guard/.git
       changed_when: true
       when: lookup('env', 'POLICYD_REPO_PATH') | length > 0
 
